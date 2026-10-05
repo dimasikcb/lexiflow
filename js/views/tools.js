@@ -931,10 +931,39 @@
        поэтому подписка здесь — сразу после создания area). */
     area.addEventListener('input', function () { buildColumnMapUI(area.value.trim()); });
 
-    var fileInput = h('input', { type: 'file', accept: '.json,.csv,.tsv,.txt', class: 'hidden' });
+    var fileInput = h('input', { type: 'file', accept: '.json,.csv,.tsv,.txt,.xlsx', class: 'hidden' });
+
+    /* Excel (.xlsx) — бинарный zip-архив, его нельзя читать как текст.
+       Конвертируем по-настоящему: SheetJS с CDN читает книгу, первый лист
+       превращаем в CSV и дальше он идёт обычным табличным путём. */
+    function importXlsx(f) {
+      U.toast('Читаю Excel-файл…', 'info', 20000);
+      import('https://cdn.jsdelivr.net/npm/xlsx@0.18.5/+esm')
+        .then(function (mod) {
+          var XLSX = mod.default || mod;
+          return f.arrayBuffer().then(function (buf) {
+            var wb = XLSX.read(new Uint8Array(buf), { type: 'array' });
+            var ws = wb.Sheets[wb.SheetNames[0]];
+            var csv = XLSX.utils.sheet_to_csv(ws);
+            area.value = csv;
+            buildColumnMapUI(csv.trim());
+            var lines = csv.split('\n').filter(function (l) { return l.trim(); }).length;
+            U.toast('Лист «' + wb.SheetNames[0] + '»: ' + lines + ' строк — проверьте колонки и нажмите «Импортировать»', 'ok', 5200);
+          });
+        })
+        .catch(function () {
+          U.toast('Не удалось прочитать Excel (конвертер грузится из интернета при первом использовании). Сохраните таблицу как CSV и импортируйте её.', 'err', 7000);
+        });
+    }
+
     fileInput.addEventListener('change', function () {
       var f = fileInput.files && fileInput.files[0];
       if (!f) return;
+      if (/\.xlsx$/i.test(f.name) || (!/\.(json|csv|tsv|txt)$/i.test(f.name) && f.size > 4 && f.size % 1 === 0 && /\.xls(b|x|m)$/i.test(f.name))) {
+        importXlsx(f);
+        fileInput.value = '';
+        return;
+      }
       var reader = new FileReader();
       reader.onload = function () {
         area.value = String(reader.result || '');
@@ -948,6 +977,12 @@
     function doImport() {
       var text = area.value.trim();
       if (!text) { U.toast('Вставьте данные или выберите файл', 'err'); return; }
+      /* Бинарный файл (xlsx/zip) читался как текст и давал мусор —
+         отсекаем по подписи PK и по обилию непечатаемых символов. */
+      if (/^PK\u0003\u0004/.test(text) || /^[\s\S]{0,200}$/.test(text.slice(0, 200)) === false || (text.slice(0, 400).match(/[\u0000-\u0008\u000E-\u001F]/g) || []).length > 4) {
+        U.toast('Похоже, вставлен бинарный файл (Excel). Выберите его через «Выбрать файл» — он будет сконвертирован, — или сохраните таблицу как CSV.', 'err', 7000);
+        return;
+      }
       var isJson = text[0] === '{' || text[0] === '[';
       if (isJson && replaceInput.checked) {
         try {
