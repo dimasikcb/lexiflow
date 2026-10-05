@@ -419,12 +419,15 @@
       test: false
     }, entry);
     data.logs.push(log);
+    /* Журнал - такие же данные, как колоды: тренировка на телефоне должна доехать до второго устройства. Без notify() синк узнавал о прогрессе только по 15-секундному фоновому тику, а в закрывшемся приложении ответы могли не уехать вовсе. */
+    notify('log:add');
     return log;
   }
 
   function removeLog(id) {
     var data = get();
     data.logs = data.logs.filter(function (l) { return l.id !== id; });
+    notify('log:remove');
   }
 
   function logsSince(ts) {
