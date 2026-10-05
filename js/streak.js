@@ -82,8 +82,20 @@
     };
   }
 
+  /**
+   * Сколько ответов осталось до зачёта сегодняшнего дня.
+   * @param {{todayCount?:number}} [streak] — результат computeStreak (опционален)
+   * @param {number} [goalOverride] — порог, если передан; иначе берётся из настроек
+   */
+  function remainingToday(streak, goalOverride) {
+    var g = (goalOverride >= 1) ? Math.floor(Number(goalOverride)) : goal();
+    var done = streak && typeof streak.todayCount === 'number' ? streak.todayCount : 0;
+    return Math.max(0, g - done);
+  }
+
   App.streak = {
     computeStreak: computeStreak,
+    remainingToday: remainingToday,
     goal: goal,
     DEFAULT_GOAL: DEFAULT_GOAL
   };
