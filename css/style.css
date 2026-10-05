@@ -1322,3 +1322,8 @@ select.input { cursor: pointer; }
 .chips-body { margin-top: 10px; }
 .chips-body:empty { display: none !important; }
 .chips-body .setting-row { padding: 8px 0; }
+/* Аккордеон разделов настроек: клик по заголовку панели */
+.panel__head--foldable { cursor: pointer; user-select: none; -webkit-user-select: none; }
+.panel__head--foldable:hover .panel__title { color: #818cf8; }
+.panel--folded .panel__body { display: none; }
+.panel--folded { padding-bottom: 0; }
