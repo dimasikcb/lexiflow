@@ -923,12 +923,13 @@
       return map;
     }
 
-    area.addEventListener('input', function () { buildColumnMapUI(area.value.trim()); });
-
     var area = h('textarea', {
       class: 'input input--area input--mono', rows: 7,
       placeholder: 'Вставьте сюда:\n• JSON резервной копии\n• CSV/TSV: слово, перевод, транскрипция\n• строки вида «word - перевод»'
     });
+    /* Перестроить выбор колонок при вставке/правке таблицы (объявлен ниже,
+       поэтому подписка здесь — сразу после создания area). */
+    area.addEventListener('input', function () { buildColumnMapUI(area.value.trim()); });
 
     var fileInput = h('input', { type: 'file', accept: '.json,.csv,.tsv,.txt', class: 'hidden' });
     fileInput.addEventListener('change', function () {
