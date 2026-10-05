@@ -138,7 +138,14 @@
     var doneToday = S.reviewsToday(null, now);
     var goal = data.settings.dailyGoal || 30;
     var goalPct = Math.min(100, Math.round(doneToday / goal * 100));
-    var series = S.streak(now);
+    /* Стрик как в Duolingo: день засчитывается только при достаточном числе
+       ответов (streakGoal, по умолчанию 10), а не за один ответ. Рекорд и
+       «сегодня добрано» считаются там же — из синхронизируемого журнала. */
+    var streakSt = App.streak
+      ? App.streak.computeStreak(data.logs, now, data.settings.streakGoal)
+      : { current: S.streak(now), best: S.streak(now), todayCount: doneToday, doneToday: doneToday >= 10 };
+    var series = streakSt.current;
+    var streakGoal = data.settings.streakGoal || (App.streak ? App.streak.DEFAULT_GOAL : 10);
 
     var searchInput = h('input', {
       class: 'input input--search',
@@ -178,7 +185,7 @@
       h('div', { class: 'ov-card' },
         h('div', { class: 'ov-card__top' }, icon('flame', 18), h('span', { text: 'Серия дней' })),
         h('b', { class: 'ov-card__value', text: String(series) }),
-        h('span', { class: 'ov-card__hint', text: series ? 'так держать!' : 'начните сегодня' })
+        h('span', { class: 'ov-card__hint', text: series ? 'рекорд: ' + streakSt.best + ' · ' + (streakSt.doneToday ? 'сегодня добрано!' : 'сегодня: ' + streakSt.todayCount + '/' + streakGoal) : 'начните сегодня' })
       ),
       h('div', { class: 'ov-card' },
         h('div', { class: 'ov-card__top' }, icon('target', 18), h('span', { text: 'Цель дня' })),

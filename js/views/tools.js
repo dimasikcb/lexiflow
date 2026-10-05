@@ -249,6 +249,10 @@
     var netSection = ttsNetSection(data);
     if (netSection) ttsPanel.querySelector('.panel__body').appendChild(netSection);
 
+    /* --- Сменная модель озвучки (js/model-tts.js) --- */
+    var modelSection = modelTtsSection(data);
+    if (modelSection) ttsPanel.querySelector('.panel__body').appendChild(modelSection);
+
     /* --- Приложение и офлайн --- */
     var swStatus = h('span', { class: 'tag tag--muted', text: App.pwa.statusText() });
     var installBtn = h('button', { class: 'btn btn--primary', onclick: function () { App.pwa.promptInstall(); } },
@@ -538,6 +542,138 @@
       progressWrap,
       h('div', { class: 'tts-net__status' }, statusText, clearBtn),
       h('p', { class: 'muted small', text: 'Выбора голоса здесь нет намеренно: у сервиса параметр voice= не работает — Russian Female и Russian Male дают байтово одинаковый файл (проверено). Меняется только язык.' })
+    );
+  }
+
+  /* ============================================================
+     Сменная оффлайн-модель озвучки (js/model-tts.js)
+     ============================================================ */
+
+  /** Карточка модели: статус, скачать/удалить, тумблер и проверка. */
+  function modelTtsSection() {
+    var T = App.modelTts;
+    if (!T || !T.supported()) return null;
+
+    var downloading = false;
+
+    var statusText = h('span', { class: 'muted small', text: 'Проверяю…' });
+    var barFill = h('div', { class: 'progress__bar', style: { width: '0%' } });
+    var progressText = h('span', { class: 'muted small' });
+    var progressWrap = h('div', { class: 'tts-net__progress', style: { display: 'none' } },
+      progressText, h('div', { class: 'progress progress--sm' }, barFill));
+
+    function setProgress(text, pct) {
+      progressWrap.style.display = '';
+      progressText.textContent = text;
+      barFill.style.width = Math.max(0, Math.min(100, pct || 0)) + '%';
+    }
+
+    function refreshStatus() {
+      return T.hasModel().then(function (has) {
+        statusText.textContent = has
+          ? 'Модель скачана (' + U.fmtBytes(T.MODEL.sizeBytes) + ') — озвучка работает без интернета.'
+          : 'Модель не скачана: Xenova/mms-tts-rus, русский, один фиксированный голос.';
+        return has;
+      }).catch(function () { return false; });
+    }
+
+    function setBusy(b) {
+      downloading = b;
+      [dlBtn, delBtn, testBtn].forEach(function (btn) {
+        try { btn.disabled = b ? true : null; } catch (e) { /* ignore */ }
+      });
+    }
+
+    var dlBtn = h('button', {
+      class: 'btn btn--primary btn--sm',
+      onclick: function () {
+        if (downloading) return;
+        setBusy(true);
+        setProgress('Скачиваю модель: 0%', 0);
+        T.downloadModel(function (pct) {
+          setProgress('Скачиваю модель: ' + pct + '%', pct);
+        }).then(function (ok) {
+          if (ok) {
+            setProgress('Модель скачана — работает без интернета.', 100);
+            U.toast('Модель озвучки скачана', 'ok', 3000);
+          } else {
+            setProgress('Не удалось скачать модель. Проверьте интернет и попробуйте ещё раз.', 0);
+          }
+          setBusy(false);
+          return refreshStatus();
+        });
+      }
+    }, icon('download', 15), h('span', { text: 'Скачать (' + Math.round(T.MODEL.sizeBytes / (1024 * 1024)) + ' МБ)' }));
+
+    var delBtn = h('button', {
+      class: 'btn btn--ghost btn--sm',
+      onclick: function () {
+        if (downloading) return;
+        U.confirmDialog('Удалить модель озвучки?',
+          'Файлы модели (' + U.fmtBytes(T.MODEL.sizeBytes) + ') будут удалены из браузера. ' +
+          'Системный голос продолжит работать, модель можно скачать снова.', 'Удалить')
+          .then(function (ok) {
+            if (!ok) return;
+            T.deleteModel().then(function () {
+              setProgress('Модель удалена.', 0);
+              U.toast('Модель удалена', 'ok', 2600);
+              return refreshStatus();
+            });
+          });
+      }
+    }, icon('trash', 15), h('span', { text: 'Удалить' }));
+
+    var testBtn = h('button', {
+      class: 'btn btn--ghost btn--sm',
+      onclick: function () {
+        if (downloading) return;
+        setProgress('Синтезирую пример…', 40);
+        T.speak('Привет, это новая озвучка').then(function (ok) {
+          if (ok) { setProgress('Играет пример модели.', 100); return; }
+          setProgress('Модель недоступна: не скачана или CDN не ответил. Остаётся системный голос.', 0);
+          U.toast('Модель пока не может озвучить — работает системный голос', 'err', 3200);
+        });
+      }
+    }, icon('sound', 15), h('span', { text: 'Проверить модель' }));
+
+    function useToggle() {
+      var checked = S.settings().modelTtsEnabled === true;
+      var input = h('input', { type: 'checkbox', checked: checked });
+      input.addEventListener('change', function () {
+        S.updateSettings({ modelTtsEnabled: input.checked });
+        U.toast(input.checked
+          ? 'Модель будет использоваться вместо системного голоса'
+          : 'Возвращаемся к системному голосу', 'ok', 2600);
+      });
+      return h('label', { class: 'setting-row setting-row--switch' },
+        h('div', { class: 'setting-row__text' },
+          h('b', { text: 'Использовать модель вместо системного голоса' }),
+          h('span', { class: 'muted small', text: 'Пока модель не скачана, переключатель ничего не меняет — звучит системный голос.' })
+        ),
+        h('span', { class: 'switch' }, input, h('span', { class: 'switch__track' }))
+      );
+    }
+
+    refreshStatus();
+
+    return h('div', { class: 'panel__section tts-model' },
+      h('span', { class: 'field__label', text: 'Озвучка — модели' }),
+      h('div', { class: 'tts-net__warn' },
+        h('span', {}, h('b', { text: 'Один раз скачивается ~38 МБ трафика. ' }),
+          'Модель нейросетевого озвучивания кладётся в кэш браузера и дальше работает офлайн; ' +
+          'при первом синтезе библиотека (~1 МБ) дополнительно загружается из CDN.')),
+      h('div', { class: 'setting-row' },
+        h('div', { class: 'setting-row__text' },
+          h('b', { text: 'Xenova/mms-tts-rus' }),
+          statusText
+        ),
+        h('div', { class: 'setting-row__control setting-row__control--stack' },
+          h('div', { class: 'inline-row' }, dlBtn, delBtn, testBtn)
+        )
+      ),
+      progressWrap,
+      useToggle(),
+      h('p', { class: 'muted small', text: 'Подсветки слов у модели нет: нейросеть отдаёт звук целиком, границ слов в нём не видно. Темп и тон системного голоса на модель не действуют.' })
     );
   }
 

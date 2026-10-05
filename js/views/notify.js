@@ -82,6 +82,7 @@
     var N = App.notify;
 
     var statusText = h('div', { class: 'setting-row__text' });
+    var backgroundNote = h('div', {});
     var permNote = h('div', {});
 
     var enableSwitch = switchRow(
@@ -124,6 +125,48 @@
       }
     );
 
+    /* Дни недели: 0 = воскресенье … 6 = суббота — как Date.getDay и как
+       settings.notify.days в js/notify.js. Значение держим в скрытом чекбоксе
+       switchRow — paintDays() читает и пишет его. Последний выбранный день
+       не снимается: набор «напоминать никогда» через интерфейс не собрать. */
+    var ALL_DAYS = [0, 1, 2, 3, 4, 5, 6];
+    var daysRow = switchRow('Дни', 'В выбранные дни напоминание приходит, в остальные — нет.', true, function () {});
+    daysRow.node.classList.add('hidden');
+    var daysBox = h('span', { class: 'chips' });
+    function paintDays(selected) {
+      var list = App.notify.normalizeDays(selected) || ALL_DAYS;
+      U.clear(daysBox);
+      ALL_DAYS.forEach(function (day) {
+        var b = h('button', {
+          class: 'chip' + (list.indexOf(day) !== -1 ? ' is-active' : ''),
+          type: 'button',
+          text: App.notify.DAY_LABELS[day]
+        });
+        b.addEventListener('click', function () {
+          var current = (App.notify.normalizeDays(daysRow.input.value) || ALL_DAYS).slice();
+          var idx = current.indexOf(day);
+          if (idx !== -1) {
+            if (current.length === 1) return; // «никогда» не выбирается здесь
+            current.splice(idx, 1);
+          } else {
+            current.push(day);
+            current.sort(function (a, c) { return a - c; });
+          }
+          daysRow.input.value = current;
+          paintDays(current);
+          run(App.notify.configure({ days: current }), function (next) {
+            daysRow.input.value = (next && App.notify.normalizeDays(next.days)) || ALL_DAYS;
+            paintDays(daysRow.input.value);
+          });
+        });
+        U.append(daysBox, [b]);
+      });
+    }
+    daysRow.input.value = App.notify.normalizeDays(N.settings().days) || ALL_DAYS;
+    paintDays(daysRow.input.value);
+    var daysControl = h('div', { class: 'setting-row__control' }, daysBox);
+    daysRow.node.appendChild(daysControl);
+
     var testBtn = h('button', {
       class: 'btn btn--ghost',
       onclick: function () {
@@ -132,17 +175,23 @@
       }
     }, icon('check', 16), h('span', { text: 'Проверить уведомление' }));
 
+    /* iOS Safari не умеет показывать уведомления из вкладки: без установки
+       на домашний экран напоминания там недоступны вовсе. */
+    var iosNote = h('p', { class: 'muted small', text: 'На iPhone и iPad в Safari уведомления не приходят вовсе: установите LexiFlow на домашний экран («Поделиться» → «На экран «Домой»») и открывайте его с иконки — тогда напоминание придёт, пока приложение открыто.' });
+
     var root = panelShell('Напоминания', 'clock',
       h('div', { class: 'setting-row' }, statusText),
       enableSwitch.node,
       row('Время напоминания', 'Проверка идёт каждую минуту, пока приложение открыто.', timeInput),
       onlyIfDueSwitch.node,
+      daysRow.node,
       row('Проверка', 'Покажет пробное уведомление прямо сейчас. Браузер спросит разрешение, если оно ещё не выдано.', testBtn),
       h('div', { class: 'panel__section' },
         h('span', { class: 'field__label', text: 'Что нужно знать' }),
-        h('p', { class: 'muted small', text: 'LexiFlow — статическое приложение без сервера: push-уведомлений у него нет. Напоминание показывает сама открытая страница, поэтому оно срабатывает, пока приложение открыто — в том числе в фоновой вкладке.' }),
-        h('p', { class: 'muted small', text: 'Если вкладка закрыта, напоминание не придёт: будить браузер некому. Это ограничение проекта, а не ошибка настроек. Надёжнее всего установить LexiFlow на устройство и держать его запущенным.' }),
+        h('p', { class: 'muted small', text: 'LexiFlow — статическое приложение без сервера: push-уведомлений у него нет. Напоминание показывает само устройство: пока приложение открыто (в том числе в фоновой вкладке) — каждую минуту; в установленном приложении Chrome/Edge — ещё и фоновая проверка, когда приложение закрыто.' }),
+        h('p', { class: 'muted small', text: 'Если вкладка закрыта, напоминание не придёт — выручает фоновая проверка в установленном приложении Chrome/Edge, но и та срабатывает, когда браузер сочтёт возможным: может и реже раза в день. Точное время при закрытом приложении без своего сервера гарантировать нельзя — это ограничение платформы, а не настроек.' }),
         h('p', { class: 'muted small', text: 'Время сверяется с локальными часами устройства, а отметка о показе хранится по местной дате — поэтому напоминание приходит не чаще одного раза в сутки и не сбивается при переходе через полночь.' }),
+        iosNote,
         permNote
       )
     );
@@ -163,8 +212,16 @@
         ),
         h('span', { class: 'muted small', text: due > 0
           ? 'Сейчас ждут повторения: ' + due + ' ' + U.plural(due, 'карточка', 'карточки', 'карточек')
-          : 'Сейчас всё повторено — ждать нечего' })
+          : 'Сейчас всё повторено — ждать нечего' }),
+        backgroundNote
       ]);
+
+      /* Фоновая проверка (Periodic Background Sync) есть не везде — когда
+         канала нет, строка остаётся пустой и места не занимает. */
+      U.clear(backgroundNote);
+      App.notify.periodicSyncState().then(function (state) {
+        paintBackgroundStatus(state === 'registered' ? true : (state === 'off' ? false : null));
+      });
 
       U.clear(permNote);
       if (perm === 'denied') {
@@ -188,6 +245,24 @@
       onlyIfDueSwitch.input.checked = !!cfg.onlyIfDue;
       onlyIfDueSwitch.input.disabled = !App.notify.supported();
       testBtn.disabled = !App.notify.supported();
+
+      // строка «Дни» видна только при включённых напоминаниях
+      daysRow.node.classList.toggle('hidden', !cfg.enabled);
+      daysRow.input.disabled = !App.notify.supported();
+      paintDays(App.notify.normalizeDays(cfg.days) || ALL_DAYS);
+    }
+
+    /** Строка «Фон» в статусе: null — канал не поддерживается, строку не рисуем. */
+    function paintBackgroundStatus(active) {
+      if (active === null) return;
+      U.append(statusText, [
+        h('span', { class: 'inline-row' },
+          h('span', { class: 'tag' + (active ? '' : ' tag--muted'), text: active ? 'Фон: включён' : 'Фон: выключен' }),
+          h('span', { class: 'muted small', text: active
+            ? 'закрытое приложение тоже проверит напоминание — когда браузер сочтёт возможным'
+            : 'включите напоминания заново в установленном приложении, чтобы фоновые проверки заработали' })
+        )
+      ]);
     }
 
     /* Настройки меняются и из других мест приложения — держим панель в курсе.

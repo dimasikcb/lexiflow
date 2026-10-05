@@ -472,6 +472,19 @@
         currentOnEnd = null;
         if (cb) { try { cb(); } catch (e) { /* ignore */ } }
       }
+      /* Подсветка слов по реальному времени аудио: слово подсвечивается
+         пропорционально позиции воспроизведения, а не расчётному темпу.
+         Точный пословный моменты у MP3 недоступен, но пропорция по duration
+         куда ближе к звуку, чем фикс. скорость чтения. */
+      if (opts.highlight && audio.duration >= 0) {
+        var hl = opts.highlight;
+        var totalWords = hl.words || 0;
+        audio.ontimeupdate = function () {
+          if (!hl || !isFinite(audio.duration) || audio.duration <= 0) return;
+          var idx = Math.min(totalWords - 1, Math.floor((audio.currentTime / audio.duration) * totalWords));
+          if (idx >= 0) hl.markAt(idx);
+        };
+      }
       audio.onended = done;
       audio.onerror = done;
       audio.onpause = function () {

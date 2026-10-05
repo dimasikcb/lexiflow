@@ -47,6 +47,83 @@
   App.theme = theme;
 
   /* ============================================================
+     Стрик-бейдж и быстрые настройки (bottom sheet)
+     ============================================================ */
+
+  /** Обновляет бейдж 🔥N в шапке (или создаёт его); вне мобильного экрана скрыт CSS-ом. */
+  function renderStreakBadge() {
+    var root = U.qs('#streak-badge-root');
+    if (!root) return;
+    var st = App.streak.computeStreak(S.logs(), new Date());
+    var badge = h('span', { class: 'streak-badge' + (st.doneToday ? '' : ' is-cold'), title: 'Серия дней: сегодня ' + st.todayCount + '/' + st.goal + ' · рекорд ' + st.best },
+      h('b', { text: '🔥' + st.current }),
+      h('span', { class: 'streak-badge__best', text: 'рекорд ' + st.best })
+    );
+    U.clear(root);
+    root.appendChild(badge);
+  }
+
+  /** Bottom sheet быстрых настроек: тема, звук, размер сессии, цель стрика. */
+  function openQuickSheet() {
+    var st = S.settings();
+
+    var themeRow = h('div', { class: 'segmented' });
+    [['auto', 'Авто'], ['dark', 'Тёмная'], ['light', 'Светлая']].forEach(function (o) {
+      themeRow.appendChild(h('button', {
+        class: 'segmented__item' + (st.theme === o[0] ? ' is-active' : ''),
+        onclick: function () {
+          S.updateSettings({ theme: o[0] });
+          App.theme.apply(o[0]);
+          U.qsa('.segmented__item', themeRow).forEach(function (b) { b.classList.remove('is-active'); });
+          this.classList.add('is-active');
+        }
+      }, h('span', { text: o[1] })));
+    });
+
+    var soundInput = h('input', { type: 'checkbox', checked: !!st.ttsAutoPlay });
+    soundInput.addEventListener('change', function () { S.updateSettings({ ttsAutoPlay: soundInput.checked }); });
+
+    var sizeInput = h('input', { class: 'input input--num quick-sheet__num', type: 'number', min: '5', max: '100', value: st.sessionLimit || 40 });
+    sizeInput.addEventListener('change', function () {
+      var v = Math.round(Number(this.value) || 0);
+      if (v !== 0) v = Math.min(100, Math.max(5, v));
+      this.value = v;
+      S.updateSettings({ sessionLimit: v });
+    });
+
+    var goalInput = h('input', { class: 'input input--num quick-sheet__num', type: 'number', min: '5', max: '50', value: st.streakGoal || 10 });
+    goalInput.addEventListener('change', function () {
+      var v = Math.min(50, Math.max(5, Math.round(Number(this.value) || 10)));
+      this.value = v;
+      S.updateSettings({ streakGoal: v });
+      renderStreakBadge();
+    });
+
+    function qrow(label, control) {
+      return h('div', { class: 'setting-row' },
+        h('div', { class: 'setting-row__text' }, h('b', { text: label })),
+        h('div', { class: 'setting-row__control' }, control));
+    }
+
+    var links = h('div', { class: 'quick-sheet__links' },
+      h('a', { class: 'menu-item', href: '#/settings' }, icon('settings', 18), h('span', { text: 'Все настройки' })),
+      h('a', { class: 'menu-item', href: '#/sync' }, icon('refresh', 18), h('span', { text: 'Синхронизация' }))
+    );
+
+    U.modal({
+      title: 'Быстрые настройки',
+      sheet: true,
+      body: h('div', { class: 'quick-sheet' },
+        qrow('Тема', themeRow),
+        qrow('Озвучивать карточки', h('span', { class: 'switch' }, soundInput, h('span', { class: 'switch__track' }))),
+        qrow('Карточек за сессию', sizeInput),
+        qrow('Цель стрика (ответов в день)', goalInput),
+        links
+      )
+    });
+  }
+
+  /* ============================================================
      PWA
      ============================================================ */
 
@@ -257,6 +334,7 @@
       }
 
       router.updateNav(route);
+      renderStreakBadge();
       pwa.renderInstallBanner();
       var main = U.qs('#main');
       if (main) main.scrollTop = 0;
@@ -312,6 +390,15 @@
         h('button', { class: 'nav__item nav__item--btn', id: 'theme-toggle', onclick: function () { theme.toggle(); } }, icon('moon', 19), h('span', { text: 'Сменить тему' }))
       )
     ]);
+
+    // быстрые настройки: круглая кнопка ⚙ в правом верхнем углу (видима ≤900px)
+    var badgeRoot = U.qs('#streak-badge-root');
+    if (badgeRoot) {
+      U.clear(badgeRoot);
+      badgeRoot.appendChild(h('div', { class: 'streak-badge-wrap' },
+        h('button', { class: 'quick-fab', 'aria-label': 'Быстрые настройки', title: 'Быстрые настройки', onclick: openQuickSheet }, icon('settings', 19))
+      ));
+    }
 
     U.clear(tabbar);
     U.append(tabbar, NAV.map(function (n) {

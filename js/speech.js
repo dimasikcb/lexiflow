@@ -796,7 +796,13 @@
     var canFiles = T && typeof T.play === 'function' && typeof T.available === 'function' && T.available(lang);
     if (!canFiles) return speak(text, lang, opts);
 
-    T.play(text, lang, { onend: opts.onend }).then(function (played) {
+    /* Подсветка при файловой озвучке: раньше её не было вовсе (у MP3 нет onboundary), из-за чего текст и звук жили отдельно. Теперь файловый плеер сам ведёт подсветчик по реальному времени аудио (timeupdate): подсвеченное слово следует за звуком, а не за расчётным темпом. */
+    var fhl = null;
+    if (opts.highlight && settings().ttsHighlight !== false) {
+      fhl = makeHighlighter(opts.highlight, cleanText(text));
+    }
+
+    T.play(text, lang, { onend: opts.onend, highlight: fhl }).then(function (played) {
       /* Ложь — единственный сигнал «звука не будет». SUPERSEDED (перебили
          следующей фразой) сюда не попадает: там уже звучит другая фраза,
          и системный голос говорил бы поверх неё. */

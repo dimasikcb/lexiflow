@@ -511,6 +511,17 @@
         )
       ),
       h('div', { class: 'study__actions' },
+        /* Бейдж стрика прямо в тренировке: отвечает Duolingo-эффекту —
+           видно, что сессия продлевает серию. */
+        (function () {
+          var st = App.streak ? App.streak.computeStreak(S.get().logs, Date.now(), S.settings().streakGoal) : null;
+          if (!st) return null;
+          return h('span', {
+            class: 'streak-badge' + (st.doneToday ? ' streak-badge--done' : ''),
+            title: st.doneToday ? 'Серия сегодня продлена!' : 'Осталось ' + App.streak.remainingToday(st, S.settings().streakGoal) + ' ответов до продления серии',
+            text: '🔥 ' + st.current
+          });
+        })(),
         h('button', {
           class: 'icon-btn', title: 'Отменить последний ответ', id: 'undo-btn',
           disabled: session.undoStack.length ? null : true,

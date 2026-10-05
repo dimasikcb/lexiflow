@@ -18,8 +18,9 @@
 
        база:      'lexiflow-sw', версия 1
        хранилище: 'reminder', ключ — свойство 'key'
-       запись:    { key: 'state', enabled, time, onlyIfDue, due,
-                    streak, goal, reviewsToday, updatedAt, lastShown }
+       запись:    { key: 'state', enabled, time, days, onlyIfDue,
+                    due, streak, goal, reviewsToday, updatedAt,
+                    lastShown }
 
      Ключ записи всегда 'state' (SUMMARY_KEY). Другие ключи в этом
      хранилище не используются, чтобы sw.js не перебирал записи.
@@ -27,7 +28,10 @@
      Поля:
        enabled      — boolean, включены ли напоминания
        time         — 'HH:MM', локальное время показа
-       onlyIfDue    — boolean, показывать только при наличии долга
+       days         — массив номеров дней недели (0 = воскресенье …
+                      6 = суббота, как Date.getDay), в которые
+                      напоминание показывается; пустой или битый
+                      массив читается как «все дни»
        due          — number, сколько карточек ждёт повторения сейчас
        streak       — number, серия дней подряд
        goal         — number, цель повторений в день
@@ -52,6 +56,12 @@
   var FIRST_CHECK_MS = 400;            // первая проверка после запуска
   var MIRROR_DEBOUNCE_MS = 1200;       // дебаунс записи в IndexedDB
   var SW_READY_TIMEOUT_MS = 1200;      // сколько ждать navigator.serviceWorker.ready
+
+  /* Минимальный интервал фоновой проверки (Periodic Background Sync).
+     12 часов — рекомендация Chrome: браузер всё равно решает сам, когда
+     звать событие (зависит от вовлечённости сайта и от того, подключён
+     ли интернет), но заявлять интервал чаще смысла нет. */
+  var PSYNC_MIN_INTERVAL_MS = 12 * 60 * 60 * 1000;
 
   var timer = null;
   var mirrorTimer = null;
@@ -150,7 +160,34 @@
     var onlyIfDue = input.onlyIfDue === undefined ? true : !!input.onlyIfDue;
     if (onlyIfDue && due <= 0) return false;
 
+    /* Дни недели: 0 = воскресенье … 6 = суббота (как Date.getDay).
+       Пустой или битый список — «все дни», как и раньше. */
+    if (!dayAllowed(input.days, new Date(now).getDay())) return false;
+
     return true;
+  }
+
+  /** Все возможные дни недели — подписи для интерфейса, вс → пн … сб. */
+  var DAY_LABELS = ['Вс', 'Пн', 'Вт', 'Ср', 'Чт', 'Пт', 'Сб'];
+
+  /** Массив дней к набору чисел 0..6; пустой или битый → null («все дни»). */
+  function normalizeDays(value) {
+    if (!Array.isArray(value)) return null;
+    var out = [];
+    for (var i = 0; i < value.length; i++) {
+      var d = Math.floor(Number(value[i]));
+      if (d >= 0 && d <= 6 && out.indexOf(d) === -1) out.push(d);
+    }
+    if (!out.length) return null;
+    out.sort(function (a, b) { return a - b; });
+    return out;
+  }
+
+  /** Разрешён ли день недели (0..6); days=null/[]/битый — все дни. */
+  function dayAllowed(days, weekday) {
+    var list = normalizeDays(days);
+    if (!list) return true;
+    return list.indexOf(weekday) !== -1;
   }
 
   /* ============================================================
@@ -158,7 +195,7 @@
      ============================================================ */
 
   function defaultSettings() {
-    return { enabled: false, time: DEFAULT_TIME, onlyIfDue: true, lastShown: '' };
+    return { enabled: false, time: DEFAULT_TIME, days: [0, 1, 2, 3, 4, 5, 6], onlyIfDue: true, lastShown: '' };
   }
 
   /** Копия настроек напоминаний: правки снаружи не должны течь в store. */
@@ -196,6 +233,7 @@
       key: SUMMARY_KEY,
       enabled: !!cfg.enabled,
       time: cfg.time,
+      days: normalizeDays(cfg.days) || [],
       onlyIfDue: !!cfg.onlyIfDue,
       due: dueToday(now),
       streak: S && typeof S.streak === 'function' ? S.streak(now) : 0,
@@ -368,6 +406,10 @@
     next.enabled = !!next.enabled;
     next.onlyIfDue = next.onlyIfDue === undefined ? true : !!next.onlyIfDue;
     next.lastShown = String(next.lastShown || '');
+    if (Object.prototype.hasOwnProperty.call(patch, 'days')) {
+      // пустой или непонятный список дней — «все дни»
+      next.days = normalizeDays(patch.days) || [0, 1, 2, 3, 4, 5, 6];
+    }
 
     var wantsEnable = patch.enabled === true;
     var perm = permission();
@@ -377,6 +419,7 @@
     if (wantsEnable && perm === 'denied') {
       next.enabled = false;
       writeNotify(next);
+      unregisterPeriodicSync();
       toast('Уведомления запрещены для этого сайта. Откройте настройки браузера: значок замка рядом с адресом → «Уведомления» → «Разрешить» — и попробуйте снова.', 'err', 7000);
       return Promise.resolve(settings());
     }
@@ -386,9 +429,11 @@
         if (result === 'granted') {
           next.enabled = true;
           writeNotify(next);
+          registerPeriodicSync();
         } else {
           next.enabled = false;
           writeNotify(next);
+          unregisterPeriodicSync();
           toast('Без разрешения браузера напоминание показать нельзя. Разрешите уведомления для этого сайта в настройках браузера и включите напоминания снова.', 'err', 7000);
         }
         return settings();
@@ -399,6 +444,7 @@
     // есть, во втором напоминания всё равно работать не будут, но настройка
     // сохраняется — панель настроек честно объясняет ограничение.
     writeNotify(next);
+    if (next.enabled) registerPeriodicSync(); else unregisterPeriodicSync();
     return Promise.resolve(settings());
   }
 
@@ -481,6 +527,86 @@
   /** Включено и поддерживается — планировщик работает, иначе молчит. */
   function syncScheduler() {
     if (settings().enabled && supported()) start(); else stop();
+  }
+
+  /* ============================================================
+     Periodic Background Sync — фоновая проверка, когда вкладка закрыта.
+
+     Обработчик periodicsync уже живёт в sw.js и ждёт тег TAG. Регистрацию
+     делает страница. Работает: установленная PWA в Chromium (Android
+     Chrome и Chrome/Edge на ПК). В обычной вкладке API тоже виден, но
+     register() бросает InvalidStateError — ловим и молчим: планировщик
+     в открытой вкладке продолжает работать как прежде.
+     ============================================================ */
+
+  /** Доступен ли вообще Periodic Background Sync (без попыток регистрации). */
+  function periodicSyncSupported() {
+    var sw = global.navigator && global.navigator.serviceWorker;
+    return !!(sw && global.ServiceWorkerRegistration &&
+      global.ServiceWorkerRegistration.prototype &&
+      typeof global.ServiceWorkerRegistration.prototype.periodicSync === 'object' &&
+      global.ServiceWorkerRegistration.prototype.periodicSync !== null &&
+      typeof global.ServiceWorkerRegistration.prototype.periodicSync.register === 'function');
+  }
+
+  /**
+   * Зарегистрировать фоновую проверку напоминаний. Промис всегда
+   * разрешается — строка-статус для панели, исключений не бросает:
+   * фоновый канал — необязательное улучшение, любой сбой означает
+   * просто «работает то, что работало раньше».
+   * @returns {Promise<string>} 'registered' | 'unavailable' | 'denied' | 'error'
+   */
+  function registerPeriodicSync() {
+    var sw = global.navigator && global.navigator.serviceWorker;
+    if (!sw || !periodicSyncSupported()) return Promise.resolve('unavailable');
+
+    // Chrome требует permission 'periodic-background-sync' = granted;
+    // где navigator.permissions нет (старые стабы, тесты), пробуем и так.
+    var permitted = Promise.resolve('granted');
+    try {
+      if (global.navigator.permissions && typeof global.navigator.permissions.query === 'function') {
+        permitted = global.navigator.permissions.query({ name: 'periodic-background-sync' }).then(
+          function (st) { return (st && st.state) || 'granted'; },
+          function () { return 'granted'; }
+        );
+      }
+    } catch (e) { /* считаем, что разрешено: register() всё равно проверит сам */ }
+
+    return permitted.then(function (state) {
+      if (state === 'denied') return 'denied';
+      return sw.ready.then(function (reg) {
+        if (!reg || !reg.periodicSync || typeof reg.periodicSync.register !== 'function') return 'unavailable';
+        return reg.periodicSync.register(TAG, { minInterval: PSYNC_MIN_INTERVAL_MS }).then(
+          function () { return 'registered'; },
+          function () { return 'error'; }
+        );
+      }, function () { return 'error'; });
+    }).catch(function () { return 'error'; });
+  }
+
+  /** Снять фоновую регистрацию; сбои игнорируем — выключение не должно падать. */
+  function unregisterPeriodicSync() {
+    var sw = global.navigator && global.navigator.serviceWorker;
+    if (!sw || !periodicSyncSupported()) return Promise.resolve(false);
+    return sw.ready.then(function (reg) {
+      if (!reg || !reg.periodicSync || typeof reg.periodicSync.unregister !== 'function') return false;
+      return reg.periodicSync.unregister(TAG).catch(function () { return false; });
+    }, function () { return false; }).catch(function () { return false; });
+  }
+
+  /**
+   * Состояние фоновой регистрации для панели: строка-статус или null,
+   * если канал вообще не поддерживается.
+   */
+  function periodicSyncState() {
+    var sw = global.navigator && global.navigator.serviceWorker;
+    if (!sw || !periodicSyncSupported()) return Promise.resolve(null);
+    return sw.ready.then(function (reg) {
+      if (!reg || !reg.periodicSync || typeof reg.periodicSync.getTags !== 'function') return 'unavailable';
+      return reg.periodicSync.getTags().then(function (tags) {
+        return (tags && tags.indexOf(TAG) !== -1) ? 'registered' : 'off';
+      }, function () { return 'unavailable'; });
+    }, function () { return 'unavailable'; }).catch(function () { return 'unavailable'; });
   }
 
   /* ============================================================
@@ -642,8 +768,17 @@
     settings: settings,
     configure: configure,
 
+    registerPeriodicSync: registerPeriodicSync,
+    unregisterPeriodicSync: unregisterPeriodicSync,
+    periodicSyncState: periodicSyncState,
+    periodicSyncSupported: periodicSyncSupported,
+
     dueToday: dueToday,
     shouldNotify: shouldNotify,
+
+    dayAllowed: dayAllowed,
+    normalizeDays: normalizeDays,
+    DAY_LABELS: DAY_LABELS,
 
     test: test,
     start: start,
