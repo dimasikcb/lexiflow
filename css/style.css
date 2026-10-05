@@ -1308,3 +1308,17 @@ select.input { cursor: pointer; }
 }
 .qs-toggle--on { background: rgba(99,102,241,.35); border-color: #6366f1; }
 .qs-toggle--on .qs-toggle__knob { left: 22px; background: #818cf8; }
+/* Плашки-темы на экране настроек */
+.chips-panel { padding: 10px 12px; }
+.chips { display: flex; flex-wrap: wrap; gap: 8px; }
+.chip {
+  padding: 7px 14px; border-radius: 999px; cursor: pointer;
+  border: 1px solid var(--border, #2a2f3a); background: transparent;
+  color: var(--text, #e8eaf0); font-size: 13.5px; line-height: 1;
+  transition: background .12s ease, border-color .12s ease, color .12s ease;
+}
+.chip:hover { border-color: #6366f1; }
+.chip--on { background: #6366f1; border-color: #6366f1; color: #fff; }
+.chips-body { margin-top: 10px; }
+.chips-body:empty { display: none !important; }
+.chips-body .setting-row { padding: 8px 0; }

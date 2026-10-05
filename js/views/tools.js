@@ -307,6 +307,10 @@
     var syncPanel = (App.views.sync && App.views.sync.panel) ? App.views.sync.panel() : null;
     var notifyPanel = (App.views.notify && App.views.notify.panel) ? App.views.notify.panel() : null;
 
+    /* --- Быстрые плашки-темы: нажал «Уведомления» — раскрылись контролы
+       уведомлений прямо здесь, без прокрутки и поиска по экрану --- */
+    var quickChips = buildQuickChips();
+
     var about = h('div', { class: 'about' },
       h('p', {}, 'LexiFlow — тренажёр иностранных слов с интервальным повторением. ',
         'Работает полностью на вашем устройстве: слова, прогресс и статистика не отправляются на серверы.'),
@@ -314,7 +318,123 @@
     );
 
     U.clear(root);
-    U.append(root, [h('div', { class: 'page page--narrow' }, head, appearance, training, ttsPanel, syncPanel, notifyPanel, appPanel, storagePanel, about)]);
+    U.append(root, [h('div', { class: 'page page--narrow' }, head, quickChips, appearance, training, ttsPanel, syncPanel, notifyPanel, appPanel, storagePanel, about)]);
+  }
+
+  /* ============================================================
+     Быстрые плашки-темы на экране настроек
+     ============================================================ */
+
+  function buildQuickChips() {
+    var THEMES = [
+      { id: 'look', label: 'Внешний вид' },
+      { id: 'train', label: 'Тренировка' },
+      { id: 'sound', label: 'Озвучка' },
+      { id: 'sync', label: 'Синхронизация' },
+      { id: 'notify', label: 'Уведомления' }
+    ];
+    var expanded = null;
+    var bodyEl = null;
+
+    function numRow(label, value, min, max, key) {
+      var input = h('input', { class: 'input', type: 'number', min: String(min), max: String(max), value: String(value) });
+      input.addEventListener('change', function () {
+        var v = U.clamp(parseInt(input.value, 10) || min, min, max);
+        input.value = String(v);
+        var patch = {}; patch[key] = v; S.updateSettings(patch);
+      });
+      return row(label, input);
+    }
+
+    function themeBody(id) {
+      var st = S.settings();
+      if (id === 'look') {
+        var order = { auto: 'light', light: 'dark', dark: 'auto' };
+        var label = { auto: 'Авто', dark: 'Тёмная', light: 'Светлая' }[st.theme || 'auto'] || 'Авто';
+        return [
+          row('Тема: ' + label, h('button', { class: 'btn', onclick: function () { S.updateSettings({ theme: order[st.theme || 'auto'] }); refresh(); } }, 'Сменить')),
+          switchRow('Показывать транскрипцию', st.showTranscription, function (v) { S.updateSettings({ showTranscription: v }); })
+        ];
+      }
+      if (id === 'train') {
+        return [
+          numRow('Карт за сеанс', st.sessionLimit || 40, 5, 100, 'sessionLimit'),
+          numRow('Повторений в день (цель)', st.dailyGoal || 30, 5, 500, 'dailyGoal'),
+          numRow('Ответов для стрика 🔥', st.streakGoal || (App.streak ? App.streak.DEFAULT_GOAL : 10), 1, 100, 'streakGoal')
+        ];
+      }
+      if (id === 'sound') {
+        return [
+          switchRow('Автопроизношение карточек', st.ttsAutoPlay !== false, function (v) { S.updateSettings({ ttsAutoPlay: v }); }),
+          switchRow('Подсветка слов при озвучке', st.ttsHighlight !== false, function (v) { S.updateSettings({ ttsHighlight: v }); }),
+          switchRow('Сетевая озвучка (лучше голос)', st.ttsNet && st.ttsNet.enabled, function (v) { S.updateSettings({ ttsNet: Object.assign({}, st.ttsNet, { enabled: v }) }); })
+        ];
+      }
+      if (id === 'sync') {
+        var SY = App.sync;
+        if (!SY) return [h('p', { class: 'muted small', text: 'Модуль синхронизации не загрузился.' })];
+        var status = SY.status();
+        var cfg = st.sync || {};
+        var stateText = cfg.gistId
+          ? (status.message || status.state || 'готово')
+          : 'не настроена — код хранилища в разделе «Синхронизация» ниже';
+        return [
+          h('p', { class: 'muted small', text: stateText }),
+          switchRow('Синхронизировать автоматически', cfg.auto !== false && !!cfg.gistId, function (v) { if (v) { SY.start(); } else { SY.stop(); } refresh(); }),
+          h('button', { class: 'btn', onclick: function () { SY.now().then(refresh); } }, 'Синхронизировать сейчас')
+        ];
+      }
+      if (id === 'notify') {
+        var N = S.settings().notify || {};
+        var timeInput = h('input', { class: 'input', type: 'time', value: N.time || '19:00' });
+        timeInput.addEventListener('change', function () {
+          S.updateSettings({ notify: Object.assign({}, S.settings().notify, { time: this.value }) });
+        });
+        return [
+          switchRow('Напоминать о тренировке', !!N.enabled, function (v) {
+            S.updateSettings({ notify: Object.assign({}, S.settings().notify, { enabled: v }) });
+            if (App.notify && App.notify.applyAuto) App.notify.applyAuto();
+          }),
+          row('Во сколько', timeInput),
+          switchRow('Только если есть карточки', N.onlyIfDue !== false, function (v) {
+            S.updateSettings({ notify: Object.assign({}, S.settings().notify, { onlyIfDue: v }) });
+          })
+        ];
+      }
+      return [];
+    }
+
+    function refresh() {
+      if (!expanded || !bodyEl) return;
+      U.clear(bodyEl);
+      var kids = themeBody(expanded);
+      kids.forEach(function (k) { if (k) bodyEl.appendChild(k); });
+      Object.keys(chipEls).forEach(function (id) {
+        chipEls[id].classList.toggle('chip--on', id === expanded);
+      });
+    }
+
+    var chipEls = {};
+
+    function build() {
+      var bar = h('div', { class: 'chips', role: 'tablist' });
+      THEMES.forEach(function (t) {
+        var b = h('button', { class: 'chip', role: 'tab', text: t.label });
+        b.addEventListener('click', function () {
+          if (expanded === t.id) { expanded = null; bodyEl.style.display = 'none'; }
+          else { expanded = t.id; bodyEl.style.display = ''; refresh(); }
+          Object.keys(chipEls).forEach(function (id) {
+            chipEls[id].classList.toggle('chip--on', id === expanded);
+          });
+        });
+        chipEls[t.id] = b;
+        bar.appendChild(b);
+      });
+      bodyEl = h('div', { class: 'chips-body', style: { display: 'none' } });
+      return h('div', { class: 'panel chips-panel' }, bar, bodyEl);
+    }
+
+    return build();
   }
 
   /* ============================================================
