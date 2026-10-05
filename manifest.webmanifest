@@ -1,0 +1,41 @@
+{
+  "name": "LexiFlow — тренажёр иностранных слов",
+  "short_name": "LexiFlow",
+  "description": "Колоды карточек, интервальное повторение, тренировки и тесты, статистика. Работает офлайн.",
+  "lang": "ru",
+  "dir": "ltr",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "display_override": ["standalone", "minimal-ui"],
+  "orientation": "any",
+  "background_color": "#0e1016",
+  "theme_color": "#0e1016",
+  "categories": ["education", "productivity"],
+  "prefer_related_applications": false,
+  "icons": [
+    { "src": "icons/icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
+    { "src": "icons/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" },
+    { "src": "icons/icon-maskable-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+  ],
+  "shortcuts": [
+    {
+      "name": "Учить слова",
+      "short_name": "Учить",
+      "url": "./index.html#/study/all",
+      "icons": [{ "src": "icons/icon-192.png", "sizes": "192x192" }]
+    },
+    {
+      "name": "Статистика",
+      "short_name": "Прогресс",
+      "url": "./index.html#/stats",
+      "icons": [{ "src": "icons/icon-192.png", "sizes": "192x192" }]
+    },
+    {
+      "name": "Промпт для нейросети",
+      "short_name": "Промпт",
+      "url": "./index.html#/ai",
+      "icons": [{ "src": "icons/icon-192.png", "sizes": "192x192" }]
+    }
+  ]
+}
