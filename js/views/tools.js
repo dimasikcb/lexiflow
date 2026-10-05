@@ -332,6 +332,9 @@
       var headEl = p.querySelector('.panel__head');
       if (!headEl) return;
       headEl.classList.add('panel__head--foldable');
+      /* По умолчанию все разделы свёрнуты — экран настроек начинается
+         компактным списком заголовков, раздел открывается по клику. */
+      p.classList.add('panel--folded');
       headEl.addEventListener('click', function () {
         p.classList.toggle('panel--folded');
       });
