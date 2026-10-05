@@ -750,8 +750,14 @@
 
     var rows = parseDelimited(lines.join('\n'));
     var headerMap = null;
-    if (opts.skipHeader !== false) headerMap = detectHeader(rows[0]);
-    if (headerMap) rows = rows.slice(1);
+    if (opts.columnMap) {
+      /* Явная карта колонок из UI («что есть что»): заголовки не угадываем,
+         но первую строку выбрасываем, если сказано «есть заголовки». */
+      if (opts.skipHeader !== false) rows = rows.slice(1);
+    } else if (opts.skipHeader !== false) {
+      headerMap = detectHeader(rows[0]);
+      if (headerMap) rows = rows.slice(1);
+    }
 
     var existing = {};
     if (opts.dedupe !== false) {
@@ -886,6 +892,20 @@
 
   function recordFromRow(cells, headerMap, opts) {
     var get2 = function (i) { return i === undefined || i === null ? '' : String(cells[i] === undefined ? '' : cells[i]).trim(); };
+    /* Явная карта колонок (UI «что есть что»): индексы задаёт пользователь. */
+    if (opts && opts.columnMap) {
+      var cm = opts.columnMap;
+      return {
+        word: get2(cm.word),
+        translation: get2(cm.translation),
+        transcription: get2(cm.transcription),
+        examples: cm.example !== undefined
+          ? collectExamples(cells, { examplePairs: [{ text: cm.example, translation: cm.exampleTranslation }] })
+          : [],
+        deck: get2(cm.deck),
+        tags: get2(cm.tags).split(/[\s,]+/).filter(Boolean)
+      };
+    }
     if (headerMap) {
       return {
         word: get2(headerMap.word !== undefined ? headerMap.word : 0),
@@ -1157,6 +1177,7 @@
     exportCsv: exportCsv,
     csvForCards: csvForCards,
     importText: importText,
+    parseTable: parseDelimited,
     replaceAll: replaceAll,
     wipe: wipe,
     clearData: clearData,

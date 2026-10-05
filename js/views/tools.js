@@ -840,6 +840,91 @@
     var headerInput = h('input', { type: 'checkbox', checked: true });
     var replaceInput = h('input', { type: 'checkbox', checked: false });
 
+    /* --- Выбор колонок «что есть что» для таблиц (CSV/TSV из Excel) --- */
+    var COLS = [
+      { key: 'word', label: 'Слово' },
+      { key: 'translation', label: 'Перевод' },
+      { key: 'transcription', label: 'Транскрипция' },
+      { key: 'example', label: 'Пример' },
+      { key: 'exampleTranslation', label: 'Перевод примера' },
+      { key: 'deck', label: 'Колода' },
+      { key: 'tags', label: 'Метки' }
+    ];
+    var colMapWrap = h('div', { class: 'panel__section', style: { display: 'none' } });
+    var colMapHint = h('p', { class: 'muted small', text: '' });
+    var colSelects = {};
+    var colPreview = h('div', { class: 'muted small', style: { margin: '6px 0' } });
+
+    function tableInfo(text) {
+      /* Таблица = есть табы (вставка из Excel) или запятые/точки с запятой в первой строке. */
+      var first = (text.split('\n')[0] || '');
+      var tabs = (first.match(/\t/g) || []).length;
+      var commas = (first.match(/,/g) || []).length + (first.match(/;/g) || []).length;
+      return { isTable: (tabs + commas) > 0, cols: Math.max(tabs, 0) + (tabs === 0 ? Math.max(commas, 0) : 0) + 1 };
+    }
+
+    function buildColumnMapUI(text) {
+      var info = tableInfo(text);
+      if (!info.isTable) { colMapWrap.style.display = 'none'; return; }
+      colMapWrap.style.display = '';
+      var n = info.cols;
+      U.clear(colMapWrap);
+      colMapHint.textContent = 'Таблица: ' + n + ' ' + U.plural(n, 'колонка', 'колонки', 'колонок') + '. Укажите, что в какой колонке — остальное будет пропущено.';
+      colMapWrap.appendChild(h('span', { class: 'field__label', text: 'Что где находится' }));
+      colMapWrap.appendChild(colMapHint);
+
+      var rows = S.parseTable(text).slice(0, 2);
+      var firstRow = rows[0] || [];
+
+      colSelects = {};
+      COLS.forEach(function (c) {
+        var sel = h('select', { class: 'input' });
+        sel.appendChild(h('option', { value: '', text: '— нет —' }));
+        for (var i = 0; i < n; i++) {
+          var sample = String(firstRow[i] || '').trim();
+          var label = 'Колонка ' + (i + 1) + (headerInput.checked && sample ? ' — «' + sample.slice(0, 18) + '»' : '');
+          sel.appendChild(h('option', { value: String(i), text: label }));
+        }
+        colSelects[c.key] = sel;
+        colMapWrap.appendChild(h('div', { class: 'setting-row' },
+          h('div', { class: 'setting-row__text' }, h('b', { text: c.label })),
+          h('div', { class: 'setting-row__control' }, sel)
+        ));
+      });
+
+      /* Разумные дефолты: 1-я колонка — слово, 2-я — перевод, дальше по заголовкам. */
+      colSelects.word.value = '0';
+      colSelects.translation.value = firstRow.length > 1 ? '1' : '';
+      if (headerInput.checked) {
+        var lower = firstRow.map(function (x) { return String(x || '').trim().toLowerCase(); });
+        COLS.forEach(function (c) {
+          for (var i = 0; i < lower.length; i++) {
+            if (lower[i].indexOf(c.key) >= 0 || lower[i].indexOf(c.label.toLowerCase()) >= 0) {
+              if (c.key === 'word' && i === 0) return;
+              if (c.key === 'translation' && i === 1) return;
+              colSelects[c.key].value = String(i); return;
+            }
+          }
+        });
+      }
+      colMapWrap.appendChild(h('p', { class: 'muted small', text: 'Слово и перевод обязательны; остальные колонки необязательны.' }));
+    }
+
+    function columnMap() {
+      if (colMapWrap.style.display === 'none') return null;
+      var map = {};
+      var any = false;
+      COLS.forEach(function (c) {
+        var v = colSelects[c.key] ? colSelects[c.key].value : '';
+        if (v !== '') { map[c.key] = parseInt(v, 10); any = true; }
+      });
+      if (!any) return null;
+      if (map.word === undefined || map.translation === undefined) return null; /* обе обязательны */
+      return map;
+    }
+
+    area.addEventListener('input', function () { buildColumnMapUI(area.value.trim()); });
+
     var area = h('textarea', {
       class: 'input input--area input--mono', rows: 7,
       placeholder: 'Вставьте сюда:\n• JSON резервной копии\n• CSV/TSV: слово, перевод, транскрипция\n• строки вида «word - перевод»'
@@ -852,6 +937,7 @@
       var reader = new FileReader();
       reader.onload = function () {
         area.value = String(reader.result || '');
+        buildColumnMapUI(area.value.trim());
         U.toast('Файл «' + f.name + '» загружен — проверьте настройки и нажмите «Импортировать»', 'ok', 3600);
       };
       reader.readAsText(f);
@@ -880,7 +966,8 @@
         newDeckName: newDeckName.value.trim() || 'Импортированная колода',
         dedupe: dedupeInput.checked,
         reverse: reverseInput.checked,
-        skipHeader: headerInput.checked
+        skipHeader: headerInput.checked,
+        columnMap: columnMap()
       });
       if (res.error) { U.toast(res.error, 'err'); return; }
       U.toast('Добавлено слов: ' + res.added + (res.skipped ? ' · пропущено: ' + res.skipped : '') +
@@ -898,6 +985,7 @@
       ),
       h('div', { class: 'panel__section' },
         h('span', { class: 'field__label', text: 'Данные' }), area,
+        colMapWrap,
         h('div', { class: 'inline-row' },
           h('button', { class: 'btn btn--ghost btn--sm', onclick: function () { fileInput.click(); } }, icon('upload', 15), h('span', { text: 'Выбрать файл' })),
           fileInput,
