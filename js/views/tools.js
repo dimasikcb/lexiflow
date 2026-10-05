@@ -925,7 +925,7 @@
 
     var area = h('textarea', {
       class: 'input input--area input--mono', rows: 7,
-      placeholder: 'Вставьте сюда:\n• JSON резервной копии\n• CSV/TSV: слово, перевод, транскрипция\n• строки вида «word - перевод»'
+      placeholder: 'Вставьте сюда:\n• JSON резервной копии\n• CSV/TSV: слово, перевод, транскрипция\n• строки вида «word - перевод»\n• или перетащите файл таблицы сюда'
     });
     /* Перестроить выбор колонок при вставке/правке таблицы (объявлен ниже,
        поэтому подписка здесь — сразу после создания area). */
@@ -956,21 +956,48 @@
         });
     }
 
-    fileInput.addEventListener('change', function () {
-      var f = fileInput.files && fileInput.files[0];
+    /* Общий путь для файла — из кнопки, из drag-and-drop и из вставки. */
+    function handleFile(f) {
       if (!f) return;
-      if (/\.xlsx$/i.test(f.name) || (!/\.(json|csv|tsv|txt)$/i.test(f.name) && f.size > 4 && f.size % 1 === 0 && /\.xls(b|x|m)$/i.test(f.name))) {
+      if (/\.xlsx$/i.test(f.name) || /\.xls(b|x|m)$/i.test(f.name)) {
         importXlsx(f);
-        fileInput.value = '';
         return;
       }
       var reader = new FileReader();
       reader.onload = function () {
         area.value = String(reader.result || '');
         buildColumnMapUI(area.value.trim());
-        U.toast('Файл «' + f.name + '» загружен — проверьте настройки и нажмите «Импортировать»', 'ok', 3600);
+        U.toast('Файл «' + f.name + '» загружен — проверьте колонки и нажмите «Импортировать»', 'ok', 3600);
       };
       reader.readAsText(f);
+    }
+
+    /* Drag-and-drop: тащите файл таблицы прямо в поле данных. */
+    ['dragover', 'dragenter'].forEach(function (ev) {
+      area.addEventListener(ev, function (e) {
+        e.preventDefault();
+        area.classList.add('is-drop');
+      });
+    });
+    ['dragleave', 'dragend'].forEach(function (ev) {
+      area.addEventListener(ev, function () { area.classList.remove('is-drop'); });
+    });
+    area.addEventListener('drop', function (e) {
+      e.preventDefault();
+      area.classList.remove('is-drop');
+      var f = e.dataTransfer && e.dataTransfer.files && e.dataTransfer.files[0];
+      if (!f) {
+        /* Перетащили не файл, а выделенный текст из таблицы — это просто текст. */
+        var txt = e.dataTransfer ? e.dataTransfer.getData('text/plain') : '';
+        if (txt) { area.value = txt; buildColumnMapUI(txt.trim()); }
+        return;
+      }
+      handleFile(f);
+    });
+
+    fileInput.addEventListener('change', function () {
+      var f = fileInput.files && fileInput.files[0];
+      handleFile(f);
       fileInput.value = '';
     });
 
