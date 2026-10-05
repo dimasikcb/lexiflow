@@ -541,12 +541,19 @@
 
   /** Доступен ли вообще Periodic Background Sync (без попыток регистрации). */
   function periodicSyncSupported() {
-    var sw = global.navigator && global.navigator.serviceWorker;
-    return !!(sw && global.ServiceWorkerRegistration &&
-      global.ServiceWorkerRegistration.prototype &&
-      typeof global.ServiceWorkerRegistration.prototype.periodicSync === 'object' &&
-      global.ServiceWorkerRegistration.prototype.periodicSync !== null &&
-      typeof global.ServiceWorkerRegistration.prototype.periodicSync.register === 'function');
+    /* ВНИМАНИЕ: обращение к periodicSync на самом прототипе в Chrome бросает
+       «Illegal invocation» — это геттер, работающий только на экземплярах.
+       Любая проверка здесь — только через try/catch. */
+    try {
+      var sw = global.navigator && global.navigator.serviceWorker;
+      if (!sw || !global.ServiceWorkerRegistration) return false;
+      var proto = global.ServiceWorkerRegistration.prototype;
+      var ps = null;
+      try { ps = proto.periodicSync; } catch (e) { return false; }
+      return !!(ps && typeof ps.register === 'function');
+    } catch (e) {
+      return false;
+    }
   }
 
   /**
