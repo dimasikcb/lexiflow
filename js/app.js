@@ -329,6 +329,7 @@
             h('div', { class: 'empty__icon' }, icon('warning', 30)),
             h('h3', { class: 'empty__title', text: 'Что-то пошло не так' }),
             h('p', { class: 'empty__text', text: String(e && e.message || e) }),
+            h('pre', { class: 'muted small', style: { whiteSpace: 'pre-wrap' }, text: String(e && e.stack || '') }),
             h('button', { class: 'btn btn--primary', onclick: function () { App.router.go('#/decks'); } }, h('span', { text: 'На главную' }))
           )));
       }
