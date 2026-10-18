@@ -1,15 +1,15 @@
 ﻿/* ============================================================
-   LexiFlow â€” service worker
-   ÐšÑÑˆÐ¸Ñ€ÑƒÐµÑ‚ Ð¾Ð±Ð¾Ð»Ð¾Ñ‡ÐºÑƒ Ð¿Ñ€Ð¸Ð»Ð¾Ð¶ÐµÐ½Ð¸Ñ Ð¸ Ð²ÑÐµ Ñ€ÐµÑÑƒÑ€ÑÑ‹, Ñ‡Ñ‚Ð¾Ð±Ñ‹ Ð¿Ñ€Ð¸Ð»Ð¾Ð¶ÐµÐ½Ð¸Ðµ
-   Ð¾Ñ‚ÐºÑ€Ñ‹Ð²Ð°Ð»Ð¾ÑÑŒ Ð¸ Ñ€Ð°Ð±Ð¾Ñ‚Ð°Ð»Ð¾ Ð±ÐµÐ· Ð¸Ð½Ñ‚ÐµÑ€Ð½ÐµÑ‚Ð°.
+   LexiFlow — service worker
+   Кэширует оболочку приложения и все ресурсы, чтобы приложение
+   открывалось и работало без интернета.
    ============================================================ */
 
-var VERSION = 'lexiflow-v1.18.6';
-/* Ð˜ÐºÐ¾Ð½ÐºÐ¸, ÑˆÑ€Ð¸Ñ„Ñ‚Ñ‹ Ð¸ Ñ„Ð°Ð¹Ð»Ñ‹ Ð¾Ð·Ð²ÑƒÑ‡ÐºÐ¸ Ð¿Ñ€Ð°ÐºÑ‚Ð¸Ñ‡ÐµÑÐºÐ¸ Ð½Ðµ Ð¼ÐµÐ½ÑÑŽÑ‚ÑÑ â€” Ð¸Ñ… Ð¼Ð¾Ð¶Ð½Ð¾ Ð±Ñ€Ð°Ñ‚ÑŒ
-   Ð¸Ð· ÐºÑÑˆÐ° ÑÑ€Ð°Ð·Ñƒ. Ð˜Ð¼ÐµÐ½Ð° Ñ„Ð°Ð¹Ð»Ð¾Ð² Ð¾Ð·Ð²ÑƒÑ‡ÐºÐ¸ ÑÐ¾Ð´ÐµÑ€Ð¶Ð°Ñ‚ Ñ…ÐµÑˆ ÑÐ¾Ð´ÐµÑ€Ð¶Ð¸Ð¼Ð¾Ð³Ð¾, Ð¿Ð¾ÑÑ‚Ð¾Ð¼Ñƒ
-   Ð·Ð°ÐºÐµÑˆÐ¸Ñ€Ð¾Ð²Ð°Ð½Ð½Ñ‹Ð¹ MP3 Ð²ÑÐµÐ³Ð´Ð° ÑÐ¾Ð¾Ñ‚Ð²ÐµÑ‚ÑÑ‚Ð²ÑƒÐµÑ‚ Ñ„Ñ€Ð°Ð·Ðµ.
-   ÐšÐ¾Ð´, ÑÑ‚Ð¸Ð»Ð¸ Ð¸ Ð¼Ð°Ð½Ð¸Ñ„ÐµÑÑ‚, Ð½Ð°Ð¾Ð±Ð¾Ñ€Ð¾Ñ‚, Ð¾Ð±Ð½Ð¾Ð²Ð»ÑÑŽÑ‚ÑÑ Ñ‡Ð°ÑÑ‚Ð¾: Ð¸Ñ… Ñ‚ÑÐ½ÐµÐ¼ Ð¸Ð· ÑÐµÑ‚Ð¸,
-   Ð° ÐºÑÑˆ Ð¸ÑÐ¿Ð¾Ð»ÑŒÐ·ÑƒÐµÐ¼ Ñ‚Ð¾Ð»ÑŒÐºÐ¾ ÐºÐ°Ðº Ð·Ð°Ð¿Ð°ÑÐ½Ð¾Ð¹ Ð²Ð°Ñ€Ð¸Ð°Ð½Ñ‚ Ð´Ð»Ñ Ð¾Ñ„Ð»Ð°Ð¹Ð½Ð°. */
+var VERSION = 'lexiflow-v1.18.7';
+/* Иконки, шрифты и файлы озвучки практически не меняются — их можно брать
+   из кэша сразу. Имена файлов озвучки содержат хеш содержимого, поэтому
+   закешированный MP3 всегда соответствует фразе.
+   Код, стили и манифест, наоборот, обновляются часто: их тянем из сети,
+   а кэш используем только как запасной вариант для офлайна. */
 var CACHE_FIRST = /\.(?:png|jpe?g|svg|webp|gif|ico|woff2?|ttf|mp3)$/i;
 var SHELL = [
   './',
@@ -48,7 +48,7 @@ var SHELL = [
 self.addEventListener('install', function (event) {
   event.waitUntil(
     caches.open(VERSION).then(function (cache) {
-      // ÐºÐ°Ð¶Ð´Ñ‹Ð¹ Ñ€ÐµÑÑƒÑ€Ñ ÐºÑÑˆÐ¸Ñ€ÑƒÐµÐ¼ Ð¾Ñ‚Ð´ÐµÐ»ÑŒÐ½Ð¾: Ð¾Ñ‚ÑÑƒÑ‚ÑÑ‚Ð²Ð¸Ðµ Ð¾Ð´Ð½Ð¾Ð³Ð¾ Ð½Ðµ Ð»Ð¾Ð¼Ð°ÐµÑ‚ ÑƒÑÑ‚Ð°Ð½Ð¾Ð²ÐºÑƒ
+      // каждый ресурс кэшируем отдельно: отсутствие одного не ломает установку
       return Promise.all(SHELL.map(function (url) {
         return cache.add(new Request(url, { cache: 'reload' })).catch(function () { return null; });
       }));
@@ -74,7 +74,7 @@ self.addEventListener('fetch', function (event) {
   var url = new URL(req.url);
   if (url.origin !== self.location.origin) return;
 
-  // ÐÐ°Ð²Ð¸Ð³Ð°Ñ†Ð¸Ñ: ÑÐ½Ð°Ñ‡Ð°Ð»Ð° ÑÐµÑ‚ÑŒ, Ð¿Ñ€Ð¸ Ð¾Ñ„Ð»Ð°Ð¹Ð½Ðµ â€” ÐºÑÑˆÐ¸Ñ€Ð¾Ð²Ð°Ð½Ð½Ñ‹Ð¹ index.html
+  // Навигация: сначала сеть, при офлайне — кэшированный index.html
   if (req.mode === 'navigate') {
     event.respondWith(
       fetch(req).then(function (res) {
@@ -83,7 +83,7 @@ self.addEventListener('fetch', function (event) {
         return res;
       }).catch(function () {
         return caches.match('./index.html').then(function (r) {
-          return r || caches.match('./') || new Response('ÐžÑ„Ð»Ð°Ð¹Ð½: Ð¿Ñ€Ð¸Ð»Ð¾Ð¶ÐµÐ½Ð¸Ðµ Ð½Ðµ Ð·Ð°ÐºÑÑˆÐ¸Ñ€Ð¾Ð²Ð°Ð½Ð¾', {
+          return r || caches.match('./') || new Response('Офлайн: приложение не закэшировано', {
             status: 503, headers: { 'Content-Type': 'text/plain; charset=utf-8' }
           });
         });
@@ -92,14 +92,14 @@ self.addEventListener('fetch', function (event) {
     return;
   }
 
-  // Ð˜ÐºÐ¾Ð½ÐºÐ¸ Ð¸ ÑˆÑ€Ð¸Ñ„Ñ‚Ñ‹: ÑÑ€Ð°Ð·Ñƒ Ð¸Ð· ÐºÑÑˆÐ°, Ð¿Ñ€Ð¸ Ð¿Ñ€Ð¾Ð¼Ð°Ñ…Ðµ â€” Ð¸Ð· ÑÐµÑ‚Ð¸.
+  // Иконки и шрифты: сразу из кэша, при промахе — из сети.
   if (CACHE_FIRST.test(url.pathname)) {
     event.respondWith(cacheFirst(req));
     return;
   }
 
-  // ÐžÑÑ‚Ð°Ð»ÑŒÐ½Ð¾Ðµ (js, css, Ð¼Ð°Ð½Ð¸Ñ„ÐµÑÑ‚, csv): ÑÐ½Ð°Ñ‡Ð°Ð»Ð° ÑÐµÑ‚ÑŒ, ÐºÑÑˆ â€” Ñ‚Ð¾Ð»ÑŒÐºÐ¾ Ð·Ð°Ð¿Ð°ÑÐ½Ð¾Ð¹.
-  // Ð˜Ð½Ð°Ñ‡Ðµ Ð¿Ð¾ÑÐ»Ðµ Ð¾Ð±Ð½Ð¾Ð²Ð»ÐµÐ½Ð¸Ñ Ð¿Ñ€Ð¸Ð»Ð¾Ð¶ÐµÐ½Ð¸Ðµ ÐµÑ‰Ñ‘ Ð¾Ð´Ð½Ñƒ Ð¿ÐµÑ€ÐµÐ·Ð°Ð³Ñ€ÑƒÐ·ÐºÑƒ Ð¿Ð¾ÐºÐ°Ð·Ñ‹Ð²Ð°ÐµÑ‚ ÑÑ‚Ð°Ñ€Ñ‹Ð¹ ÐºÐ¾Ð´.
+  // Остальное (js, css, манифест, csv): сначала сеть, кэш — только запасной.
+  // Иначе после обновления приложение ещё одну перезагрузку показывает старый код.
   event.respondWith(networkFirst(req));
 });
 
@@ -137,19 +137,24 @@ self.addEventListener('message', function (event) {
 });
 
 /* ============================================================
-   ÐÐ°Ð¿Ð¾Ð¼Ð¸Ð½Ð°Ð½Ð¸Ñ.
+   Напоминания.
 
-   Service worker Ð½Ðµ Ð²Ð¸Ð´Ð¸Ñ‚ localStorage, Ð¿Ð¾ÑÑ‚Ð¾Ð¼Ñƒ ÑÑ‚Ñ€Ð°Ð½Ð¸Ñ†Ð° ÐºÐ»Ð°Ð´Ñ‘Ñ‚
-   ÑÐ²Ð¾Ð´ÐºÑƒ Ð² IndexedDB, Ð° Ð·Ð´ÐµÑÑŒ Ð¼Ñ‹ ÐµÑ‘ Ñ‡Ð¸Ñ‚Ð°ÐµÐ¼. Ð¡Ñ…ÐµÐ¼Ñƒ Ð·Ð°Ð´Ð°Ñ‘Ñ‚
-   js/notify.js: Ð±Ð°Ð·Ð° lexiflow-sw, Ñ…Ñ€Ð°Ð½Ð¸Ð»Ð¸Ñ‰Ðµ reminder, ÐºÐ»ÑŽÑ‡ state.
+   Service worker не видит localStorage, поэтому страница кладёт
+   сводку в IndexedDB, а здесь мы её читаем. Схему задаёт
+   js/notify.js: база lexiflow-sw, хранилище reminder, ключ state.
    ============================================================ */
 
 var REMINDER_DB = 'lexiflow-sw';
 var REMINDER_STORE = 'reminder';
 var REMINDER_KEY = 'state';
+var DUE_KEY = 'due';
 var REMINDER_TAG = 'lexiflow-reminder';
+var WORD_TAG = 'lexiflow-word';
+var WORD_MAX = 5;                 // не больше пяти уведомлений за пробуждение
+var WORD_GAP_MS = 15 * 60000;     // и не чаще, чем раз в 15 минут
+var WORD_KEEP_MS = 30 * 86400000; // сколько помним «уже объявлено»
 
-function readReminder() {
+function openReminderDb() {
   return new Promise(function (resolve) {
     var req;
     try { req = indexedDB.open(REMINDER_DB, 1); } catch (e) { resolve(null); return; }
@@ -160,20 +165,90 @@ function readReminder() {
         db.createObjectStore(REMINDER_STORE, { keyPath: 'key' });
       }
     };
-    req.onsuccess = function () {
-      var db = req.result;
-      try {
-        if (!db.objectStoreNames.contains(REMINDER_STORE)) { resolve(null); return; }
-        var tx = db.transaction(REMINDER_STORE, 'readonly');
-        var get = tx.objectStore(REMINDER_STORE).get(REMINDER_KEY);
-        get.onsuccess = function () { resolve(get.result || null); };
-        get.onerror = function () { resolve(null); };
-      } catch (e) { resolve(null); }
-    };
+    req.onsuccess = function () { resolve(req.result); };
   });
 }
 
-/** Ð›Ð¾ÐºÐ°Ð»ÑŒÐ½Ð°Ñ Ð´Ð°Ñ‚Ð° Ð² Ð²Ð¸Ð´Ðµ YYYY-MM-DD â€” Ð¿Ð¾ Ð½ÐµÐ¹ Ð²Ð¸Ð´Ð½Ð¾, Ð¿Ð¾ÐºÐ°Ð·Ñ‹Ð²Ð°Ð»Ð¸ Ð»Ð¸ ÑƒÐ¶Ðµ ÑÐµÐ³Ð¾Ð´Ð½Ñ. */
+function readRecord(key) {
+  return openReminderDb().then(function (db) {
+    if (!db) return null;
+    return new Promise(function (resolve) {
+      try {
+        if (!db.objectStoreNames.contains(REMINDER_STORE)) { resolve(null); return; }
+        var tx = db.transaction(REMINDER_STORE, 'readonly');
+        var get = tx.objectStore(REMINDER_STORE).get(key);
+        get.onsuccess = function () { resolve(get.result || null); };
+        get.onerror = function () { resolve(null); };
+      } catch (e) { resolve(null); }
+    });
+  });
+}
+
+function writeRecord(record) {
+  return openReminderDb().then(function (db) {
+    if (!db) return false;
+    return new Promise(function (resolve) {
+      try {
+        var tx = db.transaction(REMINDER_STORE, 'readwrite');
+        tx.objectStore(REMINDER_STORE).put(record);
+        tx.oncomplete = function () { resolve(true); };
+        tx.onerror = function () { resolve(false); };
+        tx.onabort = function () { resolve(false); };
+      } catch (e) { resolve(false); }
+    });
+  });
+}
+
+function readReminder() {
+  return readRecord(REMINDER_KEY);
+}
+
+/**
+ * Уведомление по каждому слову, которому наступил срок.
+ *
+ * Страница кладёт в IndexedDB список «пора повторить» (ключ `due`) и отметки
+ * показанного. Здесь показываем только то, чего ещё не показывали: пара
+ * «карточка + срок» — признак одного и того же повторения, поэтому за один
+ * срок уведомление приходит один раз, а не после каждого пробуждения.
+ */
+function announceWords(now) {
+  return readRecord(DUE_KEY).then(function (rec) {
+    if (!rec || rec.perCard === false) return 0;
+    var announced = rec.announced || {};
+    var lastAt = Number(rec.lastAt) || 0;
+    var fresh = (rec.items || []).filter(function (it) {
+      return it && it.id && Number(it.due) <= now.getTime() && announced[it.id] !== it.due;
+    }).slice(0, WORD_MAX);
+    if (!fresh.length) return 0;
+    if (lastAt && now.getTime() - lastAt < WORD_GAP_MS) return 0;
+
+    return Promise.all(fresh.map(function (it) {
+      var body = (it.translation ? it.translation + ' — пора повторить' : 'Пора повторить');
+      return self.registration.showNotification(it.word || 'LexiFlow', {
+        body: body,
+        tag: WORD_TAG + '-' + it.id,
+        renotify: false,
+        icon: './icons/icon-192.png',
+        badge: './icons/icon-192.png',
+        lang: 'ru',
+        data: { url: it.deckId ? './index.html#/deck/' + it.deckId : './index.html#/study/all' }
+      }).then(function () { announced[it.id] = it.due; return 1; }, function () { return 0; });
+    })).then(function (res) {
+      var count = res.reduce(function (a, b) { return a + b; }, 0);
+      if (!count) return 0;
+      var kept = {};
+      Object.keys(announced).forEach(function (id) {
+        if (now.getTime() - Number(announced[id]) <= WORD_KEEP_MS) kept[id] = announced[id];
+      });
+      return writeRecord({
+        key: DUE_KEY, items: rec.items, announced: kept,
+        lastAt: now.getTime(), perCard: rec.perCard !== false, updatedAt: now.getTime()
+      }).then(function () { return count; });
+    });
+  }).catch(function () { return 0; });
+}
+
+/** Локальная дата в виде YYYY-MM-DD — по ней видно, показывали ли уже сегодня. */
 function todayKey(d) {
   d = d || new Date();
   var m = d.getMonth() + 1, day = d.getDate();
@@ -181,9 +256,9 @@ function todayKey(d) {
 }
 
 /**
- * ÐŸÐ¾Ñ€Ð° Ð»Ð¸ Ð½Ð°Ð¿Ð¾Ð¼Ð¸Ð½Ð°Ñ‚ÑŒ. Ð¢Ðµ Ð¶Ðµ Ð¿Ñ€Ð°Ð²Ð¸Ð»Ð°, Ñ‡Ñ‚Ð¾ Ð² js/notify.js shouldNotify:
- * Ð²ÐºÐ»ÑŽÑ‡ÐµÐ½Ð¾, ÑÐµÐ³Ð¾Ð´Ð½Ñ ÐµÑ‰Ñ‘ Ð½Ðµ Ð¿Ð¾ÐºÐ°Ð·Ñ‹Ð²Ð°Ð»Ð¸, Ð²Ñ€ÐµÐ¼Ñ Ð½Ð°ÑÑ‚ÑƒÐ¿Ð¸Ð»Ð¾, Ð´ÐµÐ½ÑŒ Ð½ÐµÐ´ÐµÐ»Ð¸
- * Ñ€Ð°Ð·Ñ€ÐµÑˆÑ‘Ð½, Ð¸ â€” ÐµÑÐ»Ð¸ Ð¿Ñ€Ð¾ÑÐ¸Ð»Ð¸ â€” ÐµÑÑ‚ÑŒ Ñ‡Ñ‚Ð¾ Ð¿Ð¾Ð²Ñ‚Ð¾Ñ€ÑÑ‚ÑŒ.
+ * Пора ли напоминать. Те же правила, что в js/notify.js shouldNotify:
+ * включено, сегодня ещё не показывали, время наступило, день недели
+ * разрешён, и — если просили — есть что повторять.
  */
 function reminderDue(state, now) {
   if (!state || !state.enabled) return false;
@@ -199,10 +274,10 @@ function reminderDue(state, now) {
 }
 
 /**
- * Ð Ð°Ð·Ñ€ÐµÑˆÑ‘Ð½ Ð»Ð¸ Ð´ÐµÐ½ÑŒ Ð½ÐµÐ´ÐµÐ»Ð¸ (0 = Ð²Ð¾ÑÐºÑ€ÐµÑÐµÐ½ÑŒÐµ â€¦ 6 = ÑÑƒÐ±Ð±Ð¾Ñ‚Ð°, ÐºÐ°Ðº Date.getDay).
- * ÐŸÑƒÑÑ‚Ð¾Ð¹ Ð¸Ð»Ð¸ Ð±Ð¸Ñ‚Ñ‹Ð¹ ÑÐ¿Ð¸ÑÐ¾Ðº â€” Â«Ð²ÑÐµ Ð´Ð½Ð¸Â»: Ñ‚Ð° Ð¶Ðµ ÑÐµÐ¼Ð°Ð½Ñ‚Ð¸ÐºÐ°, Ñ‡Ñ‚Ð¾ Ð² js/notify.js
- * (normalizeDays). Ð›Ð¾Ð³Ð¸ÐºÑƒ Ð´ÑƒÐ±Ð»Ð¸Ñ€ÑƒÐµÐ¼, Ð¿Ð¾Ñ‚Ð¾Ð¼Ñƒ Ñ‡Ñ‚Ð¾ notify.js Ñ€Ð°ÑÑÑ‡Ð¸Ñ‚Ð°Ð½ Ð½Ð° Ð¾ÐºÐ½Ð¾
- * (window), Ð° service worker ÐµÐ³Ð¾ Ð½Ðµ Ð²Ð¸Ð´Ð¸Ñ‚.
+ * Разрешён ли день недели (0 = воскресенье … 6 = суббота, как Date.getDay).
+ * Пустой или битый список — «все дни»: та же семантика, что в js/notify.js
+ * (normalizeDays). Логику дублируем, потому что notify.js рассчитан на окно
+ * (window), а service worker его не видит.
  */
 function reminderDayAllowed(days, weekday) {
   if (!Array.isArray(days) || !days.length) return true;
@@ -216,8 +291,8 @@ function reminderDayAllowed(days, weekday) {
 function showReminder(state) {
   var due = state && state.due ? state.due : 0;
   var body = due > 0
-    ? 'Ðš Ð¿Ð¾Ð²Ñ‚Ð¾Ñ€ÐµÐ½Ð¸ÑŽ: ' + due + ' ' + pluralCards(due)
-    : 'Ð—Ð°Ð³Ð»ÑÐ½Ð¸Ñ‚Ðµ â€” ÐµÑÑ‚ÑŒ Ñ‡Ñ‚Ð¾ Ð¿Ð¾Ð²Ñ‚Ð¾Ñ€Ð¸Ñ‚ÑŒ.';
+    ? 'К повторению: ' + due + ' ' + pluralCards(due)
+    : 'Загляните — есть что повторить.';
   return self.registration.showNotification('LexiFlow', {
     body: body,
     tag: REMINDER_TAG,
@@ -230,21 +305,25 @@ function showReminder(state) {
 
 function pluralCards(n) {
   var m10 = n % 10, m100 = n % 100;
-  if (m10 === 1 && m100 !== 11) return 'ÐºÐ°Ñ€Ñ‚Ð¾Ñ‡ÐºÐ°';
-  if (m10 >= 2 && m10 <= 4 && (m100 < 10 || m100 >= 20)) return 'ÐºÐ°Ñ€Ñ‚Ð¾Ñ‡ÐºÐ¸';
-  return 'ÐºÐ°Ñ€Ñ‚Ð¾Ñ‡ÐµÐº';
+  if (m10 === 1 && m100 !== 11) return 'карточка';
+  if (m10 >= 2 && m10 <= 4 && (m100 < 10 || m100 >= 20)) return 'карточки';
+  return 'карточек';
 }
 
 /**
- * Periodic Background Sync â€” ÐµÐ´Ð¸Ð½ÑÑ‚Ð²ÐµÐ½Ð½Ñ‹Ð¹ ÑÐ¿Ð¾ÑÐ¾Ð± Ð¿Ð¾ÐºÐ°Ð·Ð°Ñ‚ÑŒ Ð½Ð°Ð¿Ð¾Ð¼Ð¸Ð½Ð°Ð½Ð¸Ðµ,
- * ÐºÐ¾Ð³Ð´Ð° Ð¿Ñ€Ð¸Ð»Ð¾Ð¶ÐµÐ½Ð¸Ðµ Ð·Ð°ÐºÑ€Ñ‹Ñ‚Ð¾. ÐŸÐ¾Ð´Ð´ÐµÑ€Ð¶Ð¸Ð²Ð°ÐµÑ‚ÑÑ Ð½Ðµ Ð²ÐµÐ·Ð´Ðµ (Chrome Ð½Ð° Android
- * Ð¸ Ð² ÑƒÑÑ‚Ð°Ð½Ð¾Ð²Ð»ÐµÐ½Ð½Ñ‹Ñ… PWA), Ð¿Ð¾ÑÑ‚Ð¾Ð¼Ñƒ ÑÑ‚Ð¾ Ð´Ð¾Ð¿Ð¾Ð»Ð½ÐµÐ½Ð¸Ðµ, Ð° Ð½Ðµ Ð¾ÑÐ½Ð¾Ð²Ð°.
+ * Periodic Background Sync — единственный способ показать напоминание,
+ * когда приложение закрыто. Поддерживается не везде (Chrome на Android
+ * и в установленных PWA), поэтому это дополнение, а не основа.
  */
 self.addEventListener('periodicsync', function (event) {
   if (event.tag !== REMINDER_TAG) return;
   event.waitUntil(readReminder().then(function (state) {
-    if (reminderDue(state, new Date())) return showReminder(state);
-    return null;
+    if (!state || !state.enabled) return null;
+    // сначала слова: «пора повторить» — событие, сводка — просто итог дня
+    return announceWords(new Date()).then(function () {
+      if (reminderDue(state, new Date())) return showReminder(state);
+      return null;
+    });
   }).catch(function () { return null; }));
 });
 

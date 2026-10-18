@@ -48,12 +48,22 @@
   var DB_VERSION = 1;
   var STORE = 'reminder';
   var SUMMARY_KEY = 'state';
+  /* Второй ключ в том же хранилище: слова, которые пора повторить, и какие
+     из них уже объявлены (по паре «карточка + срок»). Отдельный ключ, а не
+     поле сводки: сводку читает sw.js по фиксированному списку полей, и
+     лишнее поле там сломало бы совместимость со старой версией воркера. */
+  var DUE_KEY = 'due';
 
   var TAG = 'lexiflow-reminder';       // тег: повтор заменяет прошлое уведомление
+  var WORD_TAG = 'lexiflow-word';      // каждое слово — своим уведомлением
   var TARGET_HASH = '#/study/all';     // куда вести по клику
   var DEFAULT_TIME = '19:00';
   var CHECK_MS = 60000;                // период проверки, пока вкладка открыта
   var FIRST_CHECK_MS = 400;            // первая проверка после запуска
+  var WORD_CHECK_MS = 30000;           // как часто смотрим, не наступил ли срок
+  var WORD_MAX_PER_RUN = 5;            // не больше пяти уведомлений за проверку
+  var WORD_GAP_MS = 15 * 60000;        // и не чаще, чем раз в 15 минут
+  var WORD_KEEP_MS = 30 * 86400000;    // сколько помним «уже объявлено»
   var MIRROR_DEBOUNCE_MS = 1200;       // дебаунс записи в IndexedDB
   var SW_READY_TIMEOUT_MS = 1200;      // сколько ждать navigator.serviceWorker.ready
 
@@ -195,7 +205,15 @@
      ============================================================ */
 
   function defaultSettings() {
-    return { enabled: false, time: DEFAULT_TIME, days: [0, 1, 2, 3, 4, 5, 6], onlyIfDue: true, lastShown: '' };
+    return {
+      enabled: false, time: DEFAULT_TIME, days: [0, 1, 2, 3, 4, 5, 6],
+      onlyIfDue: true,
+      /* Каждому слову, которому наступил срок, — своё уведомление. Это то,
+         чего ждёт человек, который просил «напоминать о каждом слове»:
+         одна сводка раз в день не говорит, ЧТО пора повторить. */
+      perCard: true,
+      lastShown: ''
+    };
   }
 
   /** Копия настроек напоминаний: правки снаружи не должны течь в store. */
@@ -252,6 +270,189 @@
     // Если запись задержится, service worker пришлёт напоминание второй раз.
     refreshMirror();
     syncScheduler();
+  }
+
+  /* ============================================================
+     Уведомление по каждому слову, которому наступил срок
+
+     Сводка раз в день говорит «есть 12 карточек» и ничего не говорит о том,
+     ЧТО повторять. Здесь — отдельное уведомление на каждое слово, у которого
+     наступил срок: заголовок = слово, текст = перевод. Повторы не дублируются:
+     помним пару «карточка + срок», поэтому второе уведомление о том же
+     повторении не приходит ни после перезагрузки, ни из service worker.
+     ============================================================ */
+
+  /** Слова, которым пора на повторение (только вышедшие из обучения). */
+  function dueCards(now, limit) {
+    var S = store();
+    if (!S || typeof S.allCards !== 'function') return [];
+    now = now || Date.now();
+    var list = S.allCards(null).filter(function (c) {
+      if (!c || c.suspended || !c.word) return false;
+      if (!c.srs || c.srs.state === 'new') return false;
+      if (c.srs.state !== 'review' && c.srs.state !== 'relearning') return false;
+      if (Number(c.srs.due) > now) return false;
+      // архивную колоду не напоминаем: человек сам убрал её с глаз
+      var deck = typeof S.getDeck === 'function' ? S.getDeck(c.deckId) : null;
+      return !(deck && deck.archived);
+    });
+    list.sort(function (a, b) { return a.srs.due - b.srs.due; });
+    return limit > 0 ? list.slice(0, limit) : list;
+  }
+
+  /** Компактная запись для IndexedDB: service worker не видит карточки целиком. */
+  function compactCard(c) {
+    return {
+      id: c.id,
+      word: String(c.word || ''),
+      translation: String(c.translation || ''),
+      deckId: c.deckId || null,
+      due: Number(c.srs && c.srs.due) || 0
+    };
+  }
+
+  /* ---------- IndexedDB: чтение и запись записи «due» ---------- */
+
+  function withDb(fn) {
+    return new Promise(function (resolve) {
+      if (!global.indexedDB) { resolve(null); return; }
+      var req;
+      try { req = global.indexedDB.open(DB_NAME, DB_VERSION); } catch (e) { resolve(null); return; }
+      req.onupgradeneeded = function () {
+        var db = req.result;
+        if (!db.objectStoreNames.contains(STORE)) db.createObjectStore(STORE, { keyPath: 'key' });
+      };
+      req.onerror = function () { resolve(null); };
+      req.onblocked = function () { resolve(null); };
+      req.onsuccess = function () {
+        var db = req.result;
+        try {
+          fn(db, function (value) { closeDb(db); resolve(value); });
+        } catch (e) {
+          closeDb(db);
+          resolve(null);
+        }
+      };
+    });
+  }
+
+  function readDue() {
+    return withDb(function (db, done) {
+      if (!db.objectStoreNames.contains(STORE)) { done(null); return; }
+      var tx = db.transaction(STORE, 'readonly');
+      var get = tx.objectStore(STORE).get(DUE_KEY);
+      get.onsuccess = function () { done(get.result || null); };
+      get.onerror = function () { done(null); };
+    });
+  }
+
+  /** Записать список и отметки «объявлено». Сбои не считаем ошибкой. */
+  function saveDue(items, announced, lastAt) {
+    var now = Date.now();
+    var kept = {};
+    announced = announced || {};
+    Object.keys(announced).forEach(function (id) {
+      // срок старше WORD_KEEP_MS — отметка больше не нужна, карточка давно повторена
+      if (now - Number(announced[id]) <= WORD_KEEP_MS) kept[id] = announced[id];
+    });
+    var record = {
+      key: DUE_KEY,
+      items: items || [],
+      announced: kept,
+      lastAt: Number(lastAt) || 0,
+      /* переключатель «уведомлять о каждом слове» живёт здесь же: сводку
+         ('state') читает sw.js по фиксированному списку полей, и лишнее
+         поле там ломало бы совместимость со старым воркером */
+      perCard: settings().perCard !== false,
+      updatedAt: now
+    };
+    return withDb(function (db, done) {
+      if (!db.objectStoreNames.contains(STORE)) { done(false); return; }
+      var tx = db.transaction(STORE, 'readwrite');
+      tx.objectStore(STORE).put(record);
+      tx.oncomplete = function () { done(true); };
+      tx.onerror = function () { done(false); };
+      tx.onabort = function () { done(false); };
+    }).then(function (ok) { return !!ok; });
+  }
+
+  /** Уведомление о конкретном слове. */
+  function showWord(card) {
+    var S = store();
+    var deck = S && typeof S.getDeck === 'function' ? S.getDeck(card.deckId) : null;
+    var body = (card.translation ? card.translation + ' — пора повторить' : 'Пора повторить');
+    if (deck && deck.name) body += ' · ' + deck.name;
+    return show(card.word, {
+      body: body,
+      tag: WORD_TAG + '-' + card.id,   // своё уведомление на слово, не «одно на всех»
+      icon: 'icons/icon-192.png',
+      badge: 'icons/icon-192.png',
+      lang: 'ru',
+      data: {
+        url: card.deckId ? '#/deck/' + card.deckId : TARGET_HASH,
+        kind: 'word',
+        cardId: card.id
+      }
+    });
+  }
+
+  /**
+   * Показать уведомления обо всех новых «пора повторить».
+   * @param {number} now
+   * @param {boolean} force — игнорировать паузу между пачками (для тестов)
+   * @returns {Promise<number>} сколько уведомлений показано
+   */
+  function announceDue(now, force) {
+    now = now || Date.now();
+    var cfg = settings();
+    if (!cfg.enabled || cfg.perCard === false) return Promise.resolve(0);
+    if (permission() !== 'granted') return Promise.resolve(0);
+
+    return readDue().then(function (rec) {
+      var announced = (rec && rec.announced) || {};
+      var lastAt = Number(rec && rec.lastAt) || 0;
+      var cards = dueCards(now, 0);
+      var fresh = cards.filter(function (c) { return announced[c.id] !== c.srs.due; })
+        .slice(0, WORD_MAX_PER_RUN);
+
+      if (!fresh.length) {
+        // список в зеркале всё равно обновляем: он нужен service worker-у
+        return saveDue(cards.map(compactCard), announced, lastAt).then(function () { return 0; });
+      }
+      if (!force && lastAt && now - lastAt < WORD_GAP_MS) return 0;
+
+      return Promise.all(fresh.map(function (c) {
+        return showWord(c).then(function (ok) {
+          if (ok) announced[c.id] = c.srs.due;
+          return ok ? 1 : 0;
+        }, function () { return 0; });
+      })).then(function (res) {
+        var count = res.reduce(function (a, b) { return a + b; }, 0);
+        return saveDue(cards.map(compactCard), announced, count ? now : lastAt)
+          .then(function () { return count; });
+      });
+    }, function () { return 0; });
+  }
+
+  /** Зеркало списка «пора повторить» для service worker-а (фоновая доставка). */
+  function dueRecord(prev) {
+    var now = Date.now();
+    var announced = {};
+    var src = (prev && prev.announced) || {};
+    Object.keys(src).forEach(function (id) {
+      if (now - Number(src[id]) <= WORD_KEEP_MS) announced[id] = src[id];
+    });
+    return {
+      key: DUE_KEY,
+      items: dueCards(now, 0).map(compactCard),
+      announced: announced,
+      lastAt: Number(prev && prev.lastAt) || 0,
+      /* переключатель «уведомлять о каждом слове» живёт здесь же: сводку
+         ('state') читает sw.js по фиксированному списку полей, и лишнее
+         поле там ломало бы совместимость со старым воркером */
+      perCard: settings().perCard !== false,
+      updatedAt: now
+    };
   }
 
   /* ============================================================
@@ -405,6 +606,7 @@
     }
     next.enabled = !!next.enabled;
     next.onlyIfDue = next.onlyIfDue === undefined ? true : !!next.onlyIfDue;
+    next.perCard = next.perCard === undefined ? true : !!next.perCard;
     next.lastShown = String(next.lastShown || '');
     if (Object.prototype.hasOwnProperty.call(patch, 'days')) {
       // пустой или непонятный список дней — «все дни»
@@ -483,6 +685,9 @@
 
   function tick() {
     if (checking) return;
+    /* Сначала слова: срок повторения — событие отдельное от дневной сводки,
+       и человек ждёт уведомление тогда, когда слово «созрело», а не в 19:00. */
+    announceDue();
     var cfg = settings();
     var now = Date.now();
     var due = dueToday(now);
@@ -647,7 +852,17 @@
         var db = req.result;
         try {
           var tx = db.transaction(STORE, 'readwrite');
-          tx.objectStore(STORE).put(record);
+          var st = tx.objectStore(STORE);
+          st.put(record);
+          /* Список «пора повторить» пишем в ТОЙ ЖЕ транзакции: отдельное
+             открытие базы на каждую правку — лишняя работа, да и тесты
+             справедливо ждут одну запись сводки на один mirror(). */
+          try {
+            var prevDue = st.get(DUE_KEY);
+            prevDue.onsuccess = function () {
+              try { st.put(dueRecord(prevDue.result || null)); } catch (e) { /* не критично */ }
+            };
+          } catch (e) { /* старый IndexedDB без get — просто пропускаем */ }
           tx.oncomplete = function () { closeDb(db); resolve(true); };
           tx.onerror = function () { closeDb(db); resolve(false); };
           tx.onabort = function () { closeDb(db); resolve(false); };
@@ -793,6 +1008,15 @@
 
     summary: summary,
     mirror: mirror,
+
+    /* слова, которым наступил срок: отдельное уведомление на каждое */
+    DUE_KEY: DUE_KEY,
+    WORD_TAG: WORD_TAG,
+    dueCards: dueCards,
+    announceDue: announceDue,
+    readDue: readDue,
+    saveDue: saveDue,
+    showWord: showWord,
 
     /* помощники, полезные и снаружи (и в тестах) */
     dateKey: dateKey,

@@ -133,9 +133,17 @@
         srs.due = now + (steps.length ? stepMs(0, steps) : MS_MIN);
         if (prev.state !== 'new') srs.lapses = prev.lapses; // обучение не считается провалом
       } else if (grade === GRADES.HARD) {
+        /* «Трудно» на шаге обучения — не тот же шаг с той же минутой, а
+           середина между текущим и следующим шагом (как в Anki: для шагов
+           1 и 10 минут «Трудно» даёт ~6 минут). Раньше здесь оставался
+           текущий шаг, и на новой карточке «Трудно» и «Снова» показывали
+           одно и то же время — выглядело как поломка интервалов. */
         srs.state = 'learning';
         srs.step = prev.state === 'new' ? 0 : Math.max(0, prev.step);
-        srs.due = now + (steps.length ? stepMs(srs.step, steps) : MS_MIN);
+        var curMs = steps.length ? stepMs(srs.step, steps) : MS_MIN;
+        var nextIdx = Math.min(srs.step + 1, Math.max(0, steps.length - 1));
+        var nextMs = steps.length ? stepMs(nextIdx, steps) : curMs;
+        srs.due = now + Math.round((curMs + nextMs) / 2);
       } else if (grade === GRADES.GOOD) {
         /* «Нормально» всегда ведёт к СЛЕДУЮЩЕМУ шагу, в том числе с новой
            карточки. Раньше новый статус специально придерживал шаг на нуле:
