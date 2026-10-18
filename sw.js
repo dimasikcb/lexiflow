@@ -4,7 +4,7 @@
    открывалось и работало без интернета.
    ============================================================ */
 
-var VERSION = 'lexiflow-v1.18.8';
+var VERSION = 'lexiflow-v1.18.9';
 /* Иконки, шрифты и файлы озвучки практически не меняются — их можно брать
    из кэша сразу. Имена файлов озвучки содержат хеш содержимого, поэтому
    закешированный MP3 всегда соответствует фразе.
@@ -231,6 +231,8 @@ function announceWords(now) {
         icon: './icons/icon-192.png',
         badge: './icons/icon-192.png',
         lang: 'ru',
+        silent: false,
+        vibrate: [180, 80, 180],
         data: { url: it.deckId ? './index.html#/deck/' + it.deckId : './index.html#/study/all' }
       }).then(function () { announced[it.id] = it.due; return 1; }, function () { return 0; });
     })).then(function (res) {
@@ -299,6 +301,8 @@ function showReminder(state) {
     renotify: false,
     icon: './icons/icon-192.png',
     badge: './icons/icon-192.png',
+    silent: false,
+    vibrate: [180, 80, 180],
     data: { url: './index.html#/study/all' }
   });
 }

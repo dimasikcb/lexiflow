@@ -1,4 +1,4 @@
-/* ============================================================
+﻿/* ============================================================
    LexiFlow — notify.js
    Напоминания о повторении: разрешение браузера, планировщик
    (работает, пока вкладка открыта) и зеркало сводки в IndexedDB.
@@ -376,24 +376,69 @@
     }).then(function (ok) { return !!ok; });
   }
 
+  /**
+   * Звук уведомления.
+   *
+   * Браузер не даёт сайту задать звук системному уведомлению: звучит канал
+   * уведомлений самого телефона, а не файл из приложения. Пока страница
+   * жива (вкладка открыта или свёрнута), звучим сами — коротким двойным
+   * сигналом; вибрацию у системного уведомления просим через vibrate.
+   */
+  var audioCtx = null;
+  function chime() {
+    try {
+      var AC = global.AudioContext || global.webkitAudioContext;
+      if (!AC) return false;
+      audioCtx = audioCtx || new AC();
+      if (audioCtx.state === 'suspended' && audioCtx.resume) audioCtx.resume();
+      var t = audioCtx.currentTime;
+      [880, 1174].forEach(function (freq, i) {
+        var osc = audioCtx.createOscillator();
+        var gain = audioCtx.createGain();
+        osc.type = 'sine';
+        osc.frequency.value = freq;
+        var start = t + i * 0.16;
+        gain.gain.setValueAtTime(0.0001, start);
+        gain.gain.exponentialRampToValueAtTime(0.16, start + 0.02);
+        gain.gain.exponentialRampToValueAtTime(0.0001, start + 0.3);
+        osc.connect(gain);
+        gain.connect(audioCtx.destination);
+        osc.start(start);
+        osc.stop(start + 0.32);
+      });
+      return true;
+    } catch (e) {
+      return false;
+    }
+  }
+
+  /** Общие поля уведомления: звук, вибрация, иконки, язык. */
+  function soundFields() {
+    return {
+      icon: 'icons/icon-192.png',
+      badge: 'icons/icon-192.png',
+      lang: 'ru',
+      silent: false,
+      vibrate: [180, 80, 180]
+    };
+  }
+
   /** Уведомление о конкретном слове. */
   function showWord(card) {
     var S = store();
     var deck = S && typeof S.getDeck === 'function' ? S.getDeck(card.deckId) : null;
     var body = (card.translation ? card.translation + ' — пора повторить' : 'Пора повторить');
     if (deck && deck.name) body += ' · ' + deck.name;
-    return show(card.word, {
+    chime();
+    return show(card.word, Object.assign({
       body: body,
       tag: WORD_TAG + '-' + card.id,   // своё уведомление на слово, не «одно на всех»
-      icon: 'icons/icon-192.png',
-      badge: 'icons/icon-192.png',
-      lang: 'ru',
       data: {
         url: card.deckId ? '#/deck/' + card.deckId : TARGET_HASH,
         kind: 'word',
         cardId: card.id
       }
-    });
+    }, soundFields()));
   }
 
   /**
@@ -523,16 +568,13 @@
   }
 
   function notificationOptions(kind, due) {
-    return {
+    return Object.assign({
       body: reminderText(due),
       tag: TAG,                      // повтор заменяет прошлое, а не копится
-      icon: 'icons/icon-192.png',
-      badge: 'icons/favicon.svg',
-      lang: 'ru',
       /* sw.js по клику ведёт на data.url — держим адрес в записи,
          чтобы обработчик в service worker не хардкодил маршрут. */
       data: { url: TARGET_HASH, kind: kind }
-    };
+    }, soundFields());
   }
 
   /** Обычное уведомление из окна — когда service worker недоступен. */
@@ -661,14 +703,12 @@
         toast('Браузер не разрешил уведомления. Разрешите их в настройках сайта и попробуйте снова.', 'err', 6000);
         return false;
       }
-      return show('LexiFlow', {
+      chime();
+      return show('LexiFlow', Object.assign({
         body: 'Пробное уведомление — всё работает.',
         tag: TAG,
-        icon: 'icons/icon-192.png',
-        badge: 'icons/favicon.svg',
-        lang: 'ru',
         data: { url: TARGET_HASH, kind: 'test' }
-      }).then(function (shown) {
+      }, soundFields())).then(function (shown) {
         toast(shown ? 'Пробное уведомление отправлено' : 'Не удалось показать уведомление', shown ? 'ok' : 'err', 3600);
         return !!shown;
       });
@@ -698,6 +738,7 @@
     })) return;
 
     checking = true;
+    chime();
     show('LexiFlow', notificationOptions('reminder', due)).then(function (shown) {
       checking = false;
       // Не показали — не отмечаем день: попробуем на следующей проверке.
@@ -1017,6 +1058,7 @@
     readDue: readDue,
     saveDue: saveDue,
     showWord: showWord,
+    chime: chime,
 
     /* помощники, полезные и снаружи (и в тестах) */
     dateKey: dateKey,

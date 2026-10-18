@@ -1,4 +1,4 @@
-﻿/* ============================================================
+/* ============================================================
    LexiFlow — style.css
    Тёмная и светлая темы, адаптивная вёрстка (сайдбар → таббар).
    ============================================================ */
@@ -93,6 +93,19 @@ ul, ol { margin: 0; padding-left: 1.15em; }
 .hidden { display: none !important; }
 .row-gap { display: flex; gap: 8px; flex-wrap: wrap; }
 .warn-text { color: var(--amber); font-size: 13px; }
+/* Ответ на «почему не приходят уведомления»: заметно, но не красным —
+   это объяснение, а не поломка. */
+.notice-line {
+  display: block;
+  margin-top: 4px;
+  padding: 8px 10px;
+  border-radius: 10px;
+  border: 1px solid color-mix(in srgb, var(--teal) 30%, transparent);
+  background: color-mix(in srgb, var(--teal) 7%, var(--panel-2));
+  font-size: 12.5px;
+  line-height: 1.5;
+  color: var(--text-dim);
+}
 .mono { font-family: var(--mono); }
 
 .dot {
