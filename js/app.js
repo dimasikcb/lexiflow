@@ -14,7 +14,7 @@
      днями: приложение выглядело актуальным, а работало старое.
      Значение обязано совпадать с VERSION в sw.js — сверяет
      tools/check-contract.js. */
-  var APP_VERSION = 'lexiflow-v1.18.7';
+  var APP_VERSION = 'lexiflow-v1.18.8';
   App.version = APP_VERSION;
 
   /* ============================================================
