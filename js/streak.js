@@ -83,13 +83,16 @@
   }
 
   /**
-   * Сколько ответов осталось до зачёта сегодняшнего дня.
-   * @param {{todayCount?:number}} [streak] — результат computeStreak (опционален)
-   * @param {number} [goalOverride] — порог, если передан; иначе берётся из настроек
+   * Сколько ответов осталось до продления серии. Чистая функция: считает
+   * от уже посчитанной сводки, чтобы вызывающий не дублировал арифметику.
+   * @param {{todayCount:number, goal:number}} st результат computeStreak
+   * @param {number} [goalN] цель дня из настроек; если не задана — из st
+   * @returns {number} 0, если день уже зачтён
    */
-  function remainingToday(streak, goalOverride) {
-    var g = (goalOverride >= 1) ? Math.floor(Number(goalOverride)) : goal();
-    var done = streak && typeof streak.todayCount === 'number' ? streak.todayCount : 0;
+  function remainingToday(st, goalN) {
+    var g = (goalN && Number(goalN) >= 1) ? Math.floor(Number(goalN))
+      : ((st && st.goal) || DEFAULT_GOAL);
+    var done = (st && typeof st.todayCount === 'number') ? st.todayCount : 0;
     return Math.max(0, g - done);
   }
 

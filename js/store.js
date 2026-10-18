@@ -434,6 +434,14 @@
     return get().logs.filter(function (l) { return l.ts >= ts; });
   }
 
+  /**
+   * Весь журнал ответов. Копия: снаружи массив магазина трогать нельзя,
+   * иначе следующая запись в лог уедет не в тот список.
+   */
+  function logs() {
+    return get().logs.slice();
+  }
+
   /* ---------- Настройки приложения ---------- */
 
   function settings() { return get().settings; }
@@ -452,13 +460,19 @@
     now = now || Date.now();
     var cards = deckId ? cardsOf(deckId) : get().cards;
     var st = { total: cards.length, new: 0, learning: 0, review: 0, suspended: 0, due: 0, leeches: 0 };
-    var dayEnd = U.startOfDay(now) + U.MS_DAY;
     cards.forEach(function (c) {
       if (c.suspended) { st.suspended++; return; }
       if (SRS.isNew(c)) st.new++;
       else if (SRS.isLearning(c)) st.learning++;
       else st.review++;
-      if (c.srs && c.srs.due < dayEnd) st.due++;
+      /* «К повторению» — это выученные карточки, у которых срок наступил
+         (srs.due <= now): ровно то, что реально даст ближайшая сессия.
+         Новые карточки сюда не входят — у них due = момент создания, и
+         без этой проверки экран колоды показывал «6 к повторению» там,
+         где шесть ещё не показанных новых карточек. Обучающиеся тоже не
+         входят: они считаются в «обучении» (как в Anki), иначе одна
+         карточка попадала бы в оба счётчика сразу. */
+      if (!SRS.isNew(c) && !SRS.isLearning(c) && c.srs && c.srs.due <= now) st.due++;
       if (c.srs && c.srs.leech) st.leeches++;
     });
     return st;
@@ -482,6 +496,27 @@
     get().logs.forEach(function (l) {
       if (l.ts < dayStart) return;
       if (deckId && l.deckId !== deckId) return;
+      count++;
+    });
+    return count;
+  }
+
+  /**
+   * Сколько ПОВТОРЕНИЙ уже отвечено сегодня — именно этим числом расходуется
+   * дневной лимит (settings.maxReviewsPerDay).
+   *
+   * Отличия от reviewsToday: шаги обучения и ответы в тесте не считаются.
+   * Лимит в Anki — про карточки, вышедшие из обучения; тест вообще не меняет
+   * расписание и не должен отнимать у человека его повторения.
+   */
+  function reviewsDoneToday(deckId, now) {
+    var dayStart = U.startOfDay(now || Date.now());
+    var count = 0;
+    get().logs.forEach(function (l) {
+      if (l.ts < dayStart) return;
+      if (l.test) return;
+      if (deckId && l.deckId !== deckId) return;
+      if (l.stateFrom !== 'review' && l.stateFrom !== 'relearning') return;
       count++;
     });
     return count;
@@ -750,14 +785,8 @@
 
     var rows = parseDelimited(lines.join('\n'));
     var headerMap = null;
-    if (opts.columnMap) {
-      /* Явная карта колонок из UI («что есть что»): заголовки не угадываем,
-         но первую строку выбрасываем, если сказано «есть заголовки». */
-      if (opts.skipHeader !== false) rows = rows.slice(1);
-    } else if (opts.skipHeader !== false) {
-      headerMap = detectHeader(rows[0]);
-      if (headerMap) rows = rows.slice(1);
-    }
+    if (opts.skipHeader !== false) headerMap = detectHeader(rows[0]);
+    if (headerMap) rows = rows.slice(1);
 
     var existing = {};
     if (opts.dedupe !== false) {
@@ -892,20 +921,6 @@
 
   function recordFromRow(cells, headerMap, opts) {
     var get2 = function (i) { return i === undefined || i === null ? '' : String(cells[i] === undefined ? '' : cells[i]).trim(); };
-    /* Явная карта колонок (UI «что есть что»): индексы задаёт пользователь. */
-    if (opts && opts.columnMap) {
-      var cm = opts.columnMap;
-      return {
-        word: get2(cm.word),
-        translation: get2(cm.translation),
-        transcription: get2(cm.transcription),
-        examples: cm.example !== undefined
-          ? collectExamples(cells, { examplePairs: [{ text: cm.example, translation: cm.exampleTranslation }] })
-          : [],
-        deck: get2(cm.deck),
-        tags: get2(cm.tags).split(/[\s,]+/).filter(Boolean)
-      };
-    }
     if (headerMap) {
       return {
         word: get2(headerMap.word !== undefined ? headerMap.word : 0),
@@ -1166,18 +1181,19 @@
     addLog: addLog,
     removeLog: removeLog,
     logsSince: logsSince,
+    logs: logs,
     settings: settings,
     updateSettings: updateSettings,
     deckStats: deckStats,
     newIntroducedToday: newIntroducedToday,
     reviewsToday: reviewsToday,
+    reviewsDoneToday: reviewsDoneToday,
     streak: streak,
     exportAll: exportAll,
     exportDeck: exportDeck,
     exportCsv: exportCsv,
     csvForCards: csvForCards,
     importText: importText,
-    parseTable: parseDelimited,
     replaceAll: replaceAll,
     wipe: wipe,
     clearData: clearData,

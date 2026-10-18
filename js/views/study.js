@@ -40,6 +40,18 @@
     return SRS.sanitizeSettings(d ? d.settings : SRS.DEFAULT_SETTINGS);
   }
 
+  /**
+   * Сколько повторений ещё разрешено сегодня. Лимит дневной, поэтому из
+   * настройки вычитается уже отвеченное сегодня — иначе «300 в день»
+   * превращалось в «300 за каждый запуск тренировки».
+   */
+  function reviewsLeftToday(deckIds, now) {
+    var settings = deckSettingsFor(deckIds);
+    var deckId = deckIds.length === 1 ? deckIds[0] : null;
+    var done = S.reviewsDoneToday(deckId, now || Date.now());
+    return Math.max(0, settings.maxReviewsPerDay - done);
+  }
+
   function primaryLang(deckIds, side) {
     var deck = deckIds.length ? S.getDeck(deckIds[0]) : null;
     if (!deck) return side === 'to' ? 'ru' : 'en';
@@ -305,8 +317,11 @@
     else fresh.sort(function (a, b) { return a.createdAt - b.createdAt; });
     fresh = fresh.slice(0, newBudget);
 
-    // лимит повторений
-    var reviewBudget = opts.ignoreLimits ? review.length : Math.min(review.length, settings.maxReviewsPerDay);
+    /* лимит повторений — ДНЕВНОЙ: вычитаем уже отвеченное сегодня, иначе
+       ограничение действовало только на размер одной сессии */
+    var reviewBudget = opts.ignoreLimits
+      ? review.length
+      : Math.min(review.length, reviewsLeftToday(deckIds, now));
 
     var learnQueue = learning.map(function (c) { return { card: c, kind: 'learn', due: c.srs.due }; });
     var mainQueue = review.slice(0, reviewBudget).map(function (c) { return { card: c, kind: 'review', due: c.srs.due }; })
@@ -373,6 +388,33 @@
       totals.new += st.new; totals.learning += st.learning; totals.due += st.due; totals.total += st.total;
     });
 
+    /* Честность: если дневной лимит повторений урезает сессию, «12 к
+       повторению» над короткой (или пустой) тренировкой — загадка.
+       Строка появляется только тогда, когда лимит действительно мешает. */
+    var limitNote = null;
+    if (cfg.useLimits) {
+      var scoped = deckSettingsFor(deckIds);
+      var leftReviews = reviewsLeftToday(deckIds, now);
+      if (totals.due > leftReviews) {
+        var doneReviews = scoped.maxReviewsPerDay - leftReviews;
+        limitNote = h('div', { class: 'nudge nudge--limit' },
+          h('div', { class: 'nudge__text' },
+            h('b', {
+              text: (leftReviews ? 'Дневной лимит повторений: ' : 'Дневной лимит повторений исчерпан: ') +
+                doneReviews + ' из ' + scoped.maxReviewsPerDay
+            }),
+            h('span', {
+              text: leftReviews
+                ? 'Сейчас в тренировку попадёт ' + leftReviews + ' ' +
+                  U.plural(leftReviews, 'карточка', 'карточки', 'карточек') +
+                  ', остальные вернутся завтра. Снять ограничение — галочка «Учитывать дневные лимиты».'
+                : 'Все ' + totals.due + ' ' + U.plural(totals.due, 'карточка', 'карточки', 'карточек') +
+                  ' уже сверх лимита — они вернутся завтра. Позаниматься всё равно можно: снимите галочку «Учитывать дневные лимиты».'
+            })
+          ));
+      }
+    }
+
     var modeRow = h('div', { class: 'mode-grid' });
     MODES.forEach(function (m) {
       if (m.id === 'listening' && !SP.supported()) return;
@@ -409,7 +451,8 @@
 
     var limitsToggle = h('input', {
       type: 'checkbox', checked: cfg.useLimits,
-      onchange: function () { cfg.useLimits = this.checked; }
+      /* перерисовка нужна строке о дневном лимите: снял галочку — она исчезла */
+      onchange: function () { cfg.useLimits = this.checked; App.router.refresh(); }
     });
     var shuffleToggle = h('input', {
       type: 'checkbox', checked: cfg.shuffle,
@@ -447,7 +490,7 @@
     );
 
     U.clear(root);
-    U.append(root, [h('div', { class: 'page' }, head, launcher)]);
+    U.append(root, [h('div', { class: 'page' }, head, limitNote, launcher)]);
   }
 
   /* ============================================================
@@ -471,6 +514,9 @@
       dir: cfg.dir,
       applySrs: !isTest,
       test: !!isTest,
+      /* помним, как сессию запустили: «Продолжить» и итоги обязаны жить по
+         тем же правилам, что и сама сессия */
+      useLimits: !isTest && !!cfg.useLimits,
       learn: queue.learn,
       main: queue.main,
       initialCounts: queue.counts,
@@ -514,7 +560,7 @@
         /* Бейдж стрика прямо в тренировке: отвечает Duolingo-эффекту —
            видно, что сессия продлевает серию. */
         (function () {
-          var st = App.streak ? App.streak.computeStreak(S.get().logs, Date.now(), S.settings().streakGoal) : null;
+          var st = App.streak && App.streak.computeStreak ? App.streak.computeStreak(S.logs(), Date.now()) : null;
           if (!st) return null;
           return h('span', {
             class: 'streak-badge' + (st.doneToday ? ' streak-badge--done' : ''),
@@ -1202,13 +1248,18 @@
     var ids = session ? session.deckIds : [];
     var cards = S.allCards(ids).filter(function (c) { return !c.suspended; });
     var due = cards.filter(function (c) { return !SRS.isNew(c) && c.srs.due <= now; }).length;
+    /* «Продолжить» живёт по тому же дневному лимиту, что и сессия: иначе
+       кнопка обещает карточки, которых не даст (после исчерпания лимита
+       клик просто возвращал те же итоги). */
+    if (session && session.useLimits) due = Math.min(due, reviewsLeftToday(ids, now));
     return { total: due, due: due };
   }
 
   function continueSession() {
     var ids = session.deckIds;
-    var cfg = { mode: session.mode, dir: session.dir, useLimits: true, shuffle: false, limit: 0 };
-    var more = buildQueue(ids, { ignoreLimits: false, shuffleMain: false, limit: 0 });
+    var more = buildQueue(ids, {
+      ignoreLimits: !session.useLimits, shuffleMain: false, limit: 0
+    });
     session.learn = session.learn.concat(more.learn);
     session.main = session.main.concat(more.main);
     session.finished = false;

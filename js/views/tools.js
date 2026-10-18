@@ -313,7 +313,11 @@
     var about = h('div', { class: 'about' },
       h('p', {}, 'LexiFlow — тренажёр иностранных слов с интервальным повторением. ',
         'Работает полностью на вашем устройстве: слова, прогресс и статистика не отправляются на серверы.'),
-      h('p', { class: 'muted small', text: 'Совет: делайте экспорт резервной копии — данные хранятся в браузере и могут быть потеряны при очистке сайта.' })
+      h('p', { class: 'muted small', text: 'Совет: делайте экспорт резервной копии — данные хранятся в браузере и могут быть потеряны при очистке сайта.' }),
+      /* Номер версии виден человеку: по нему сразу понятно, свежая ли
+         сборка на устройстве или это закэшированная старая. Без номера
+         «почему не работает» и «почему всё ещё старое» выглядят одинаково. */
+      h('p', { class: 'muted small', text: 'Версия сборки: ' + (App.version || 'неизвестна') })
     );
 
     U.clear(root);
@@ -840,176 +844,27 @@
     var headerInput = h('input', { type: 'checkbox', checked: true });
     var replaceInput = h('input', { type: 'checkbox', checked: false });
 
-    /* --- Выбор колонок «что есть что» для таблиц (CSV/TSV из Excel) --- */
-    var COLS = [
-      { key: 'word', label: 'Слово' },
-      { key: 'translation', label: 'Перевод' },
-      { key: 'transcription', label: 'Транскрипция' },
-      { key: 'example', label: 'Пример' },
-      { key: 'exampleTranslation', label: 'Перевод примера' },
-      { key: 'deck', label: 'Колода' },
-      { key: 'tags', label: 'Метки' }
-    ];
-    var colMapWrap = h('div', { class: 'panel__section', style: { display: 'none' } });
-    var colMapHint = h('p', { class: 'muted small', text: '' });
-    var colSelects = {};
-    var colPreview = h('div', { class: 'muted small', style: { margin: '6px 0' } });
-
-    function tableInfo(text) {
-      /* Таблица = есть табы (вставка из Excel) или запятые/точки с запятой в первой строке. */
-      var first = (text.split('\n')[0] || '');
-      var tabs = (first.match(/\t/g) || []).length;
-      var commas = (first.match(/,/g) || []).length + (first.match(/;/g) || []).length;
-      return { isTable: (tabs + commas) > 0, cols: Math.max(tabs, 0) + (tabs === 0 ? Math.max(commas, 0) : 0) + 1 };
-    }
-
-    function buildColumnMapUI(text) {
-      var info = tableInfo(text);
-      if (!info.isTable) { colMapWrap.style.display = 'none'; return; }
-      colMapWrap.style.display = '';
-      var n = info.cols;
-      U.clear(colMapWrap);
-      colMapHint.textContent = 'Таблица: ' + n + ' ' + U.plural(n, 'колонка', 'колонки', 'колонок') + '. Укажите, что в какой колонке — остальное будет пропущено.';
-      colMapWrap.appendChild(h('span', { class: 'field__label', text: 'Что где находится' }));
-      colMapWrap.appendChild(colMapHint);
-
-      var rows = S.parseTable(text).slice(0, 2);
-      var firstRow = rows[0] || [];
-
-      colSelects = {};
-      COLS.forEach(function (c) {
-        var sel = h('select', { class: 'input' });
-        sel.appendChild(h('option', { value: '', text: '— нет —' }));
-        for (var i = 0; i < n; i++) {
-          var sample = String(firstRow[i] || '').trim();
-          var label = 'Колонка ' + (i + 1) + (headerInput.checked && sample ? ' — «' + sample.slice(0, 18) + '»' : '');
-          sel.appendChild(h('option', { value: String(i), text: label }));
-        }
-        colSelects[c.key] = sel;
-        colMapWrap.appendChild(h('div', { class: 'setting-row' },
-          h('div', { class: 'setting-row__text' }, h('b', { text: c.label })),
-          h('div', { class: 'setting-row__control' }, sel)
-        ));
-      });
-
-      /* Разумные дефолты: 1-я колонка — слово, 2-я — перевод, дальше по заголовкам. */
-      colSelects.word.value = '0';
-      colSelects.translation.value = firstRow.length > 1 ? '1' : '';
-      if (headerInput.checked) {
-        var lower = firstRow.map(function (x) { return String(x || '').trim().toLowerCase(); });
-        COLS.forEach(function (c) {
-          for (var i = 0; i < lower.length; i++) {
-            if (lower[i].indexOf(c.key) >= 0 || lower[i].indexOf(c.label.toLowerCase()) >= 0) {
-              if (c.key === 'word' && i === 0) return;
-              if (c.key === 'translation' && i === 1) return;
-              colSelects[c.key].value = String(i); return;
-            }
-          }
-        });
-      }
-      colMapWrap.appendChild(h('p', { class: 'muted small', text: 'Слово и перевод обязательны; остальные колонки необязательны.' }));
-    }
-
-    function columnMap() {
-      if (colMapWrap.style.display === 'none') return null;
-      var map = {};
-      var any = false;
-      COLS.forEach(function (c) {
-        var v = colSelects[c.key] ? colSelects[c.key].value : '';
-        if (v !== '') { map[c.key] = parseInt(v, 10); any = true; }
-      });
-      if (!any) return null;
-      if (map.word === undefined || map.translation === undefined) return null; /* обе обязательны */
-      return map;
-    }
-
     var area = h('textarea', {
       class: 'input input--area input--mono', rows: 7,
-      placeholder: 'Вставьте сюда:\n• JSON резервной копии\n• CSV/TSV: слово, перевод, транскрипция\n• строки вида «word - перевод»\n• или перетащите файл таблицы сюда'
+      placeholder: 'Вставьте сюда:\n• JSON резервной копии\n• CSV/TSV: слово, перевод, транскрипция\n• строки вида «word - перевод»'
     });
-    /* Перестроить выбор колонок при вставке/правке таблицы (объявлен ниже,
-       поэтому подписка здесь — сразу после создания area). */
-    area.addEventListener('input', function () { buildColumnMapUI(area.value.trim()); });
 
-    var fileInput = h('input', { type: 'file', accept: '.json,.csv,.tsv,.txt,.xlsx', class: 'hidden' });
-
-    /* Excel (.xlsx) — бинарный zip-архив, его нельзя читать как текст.
-       Конвертируем по-настоящему: SheetJS с CDN читает книгу, первый лист
-       превращаем в CSV и дальше он идёт обычным табличным путём. */
-    function importXlsx(f) {
-      U.toast('Читаю Excel-файл…', 'info', 20000);
-      import('https://cdn.jsdelivr.net/npm/xlsx@0.18.5/+esm')
-        .then(function (mod) {
-          var XLSX = mod.default || mod;
-          return f.arrayBuffer().then(function (buf) {
-            var wb = XLSX.read(new Uint8Array(buf), { type: 'array' });
-            var ws = wb.Sheets[wb.SheetNames[0]];
-            var csv = XLSX.utils.sheet_to_csv(ws);
-            area.value = csv;
-            buildColumnMapUI(csv.trim());
-            var lines = csv.split('\n').filter(function (l) { return l.trim(); }).length;
-            U.toast('Лист «' + wb.SheetNames[0] + '»: ' + lines + ' строк — проверьте колонки и нажмите «Импортировать»', 'ok', 5200);
-          });
-        })
-        .catch(function () {
-          U.toast('Не удалось прочитать Excel (конвертер грузится из интернета при первом использовании). Сохраните таблицу как CSV и импортируйте её.', 'err', 7000);
-        });
-    }
-
-    /* Общий путь для файла — из кнопки, из drag-and-drop и из вставки. */
-    function handleFile(f) {
+    var fileInput = h('input', { type: 'file', accept: '.json,.csv,.tsv,.txt', class: 'hidden' });
+    fileInput.addEventListener('change', function () {
+      var f = fileInput.files && fileInput.files[0];
       if (!f) return;
-      if (/\.xlsx$/i.test(f.name) || /\.xls(b|x|m)$/i.test(f.name)) {
-        importXlsx(f);
-        return;
-      }
       var reader = new FileReader();
       reader.onload = function () {
         area.value = String(reader.result || '');
-        buildColumnMapUI(area.value.trim());
-        U.toast('Файл «' + f.name + '» загружен — проверьте колонки и нажмите «Импортировать»', 'ok', 3600);
+        U.toast('Файл «' + f.name + '» загружен — проверьте настройки и нажмите «Импортировать»', 'ok', 3600);
       };
       reader.readAsText(f);
-    }
-
-    /* Drag-and-drop: тащите файл таблицы прямо в поле данных. */
-    ['dragover', 'dragenter'].forEach(function (ev) {
-      area.addEventListener(ev, function (e) {
-        e.preventDefault();
-        area.classList.add('is-drop');
-      });
-    });
-    ['dragleave', 'dragend'].forEach(function (ev) {
-      area.addEventListener(ev, function () { area.classList.remove('is-drop'); });
-    });
-    area.addEventListener('drop', function (e) {
-      e.preventDefault();
-      area.classList.remove('is-drop');
-      var f = e.dataTransfer && e.dataTransfer.files && e.dataTransfer.files[0];
-      if (!f) {
-        /* Перетащили не файл, а выделенный текст из таблицы — это просто текст. */
-        var txt = e.dataTransfer ? e.dataTransfer.getData('text/plain') : '';
-        if (txt) { area.value = txt; buildColumnMapUI(txt.trim()); }
-        return;
-      }
-      handleFile(f);
-    });
-
-    fileInput.addEventListener('change', function () {
-      var f = fileInput.files && fileInput.files[0];
-      handleFile(f);
       fileInput.value = '';
     });
 
     function doImport() {
       var text = area.value.trim();
       if (!text) { U.toast('Вставьте данные или выберите файл', 'err'); return; }
-      /* Бинарный файл (xlsx/zip) читался как текст и давал мусор —
-         отсекаем по подписи PK и по обилию непечатаемых символов. */
-      if (/^PK\u0003\u0004/.test(text) || /^[\s\S]{0,200}$/.test(text.slice(0, 200)) === false || (text.slice(0, 400).match(/[\u0000-\u0008\u000E-\u001F]/g) || []).length > 4) {
-        U.toast('Похоже, вставлен бинарный файл (Excel). Выберите его через «Выбрать файл» — он будет сконвертирован, — или сохраните таблицу как CSV.', 'err', 7000);
-        return;
-      }
       var isJson = text[0] === '{' || text[0] === '[';
       if (isJson && replaceInput.checked) {
         try {
@@ -1029,8 +884,7 @@
         newDeckName: newDeckName.value.trim() || 'Импортированная колода',
         dedupe: dedupeInput.checked,
         reverse: reverseInput.checked,
-        skipHeader: headerInput.checked,
-        columnMap: columnMap()
+        skipHeader: headerInput.checked
       });
       if (res.error) { U.toast(res.error, 'err'); return; }
       U.toast('Добавлено слов: ' + res.added + (res.skipped ? ' · пропущено: ' + res.skipped : '') +
@@ -1048,7 +902,6 @@
       ),
       h('div', { class: 'panel__section' },
         h('span', { class: 'field__label', text: 'Данные' }), area,
-        colMapWrap,
         h('div', { class: 'inline-row' },
           h('button', { class: 'btn btn--ghost btn--sm', onclick: function () { fileInput.click(); } }, icon('upload', 15), h('span', { text: 'Выбрать файл' })),
           fileInput,

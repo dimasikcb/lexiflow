@@ -303,6 +303,13 @@
     if (pack) return Promise.resolve(pack);
     if (packTried) return Promise.resolve(null);
     if (!supported()) return Promise.resolve(null);
+    /* Однофайловая сборка открывается по file://, а fetch там не работает
+       в принципе. Просить заведомо несуществующий файл — это ошибка
+       в консоли на каждый запуск, поэтому проверяем протокол заранее. */
+    if (!/^https?:$/.test(global.location && global.location.protocol || '')) {
+      packTried = true;
+      return Promise.resolve(null);
+    }
     if (packPending) return packPending;
     packTried = true;
     packPending = global.fetch(PACK_FILE, { credentials: 'same-origin', cache: 'no-cache' })

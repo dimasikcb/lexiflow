@@ -86,7 +86,7 @@
           S.updateSettings({ streakGoal: v });
         })),
 
-        U.h('button', { class: 'btn btn--block', onclick: function () { sheetClose(); if (App.router) App.router.navigate('#/settings'); } },
+        U.h('button', { class: 'btn btn--block', onclick: function () { sheetClose(); if (App.router && App.router.go) App.router.go('#/settings'); } },
           'Все настройки')
       );
 

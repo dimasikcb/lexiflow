@@ -175,7 +175,7 @@
       h('div', { class: 'ov-card ov-card--accent' },
         h('div', { class: 'ov-card__top' }, icon('clock', 18), h('span', { text: 'К повторению' })),
         h('b', { class: 'ov-card__value', text: String(totals.due) }),
-        h('span', { class: 'ov-card__hint', text: totals.learning ? 'включая ' + totals.learning + ' в обучении' : 'на сегодня' })
+        h('span', { class: 'ov-card__hint', text: totals.learning ? 'ещё ' + totals.learning + ' в обучении' : 'ровно сейчас' })
       ),
       h('div', { class: 'ov-card' },
         h('div', { class: 'ov-card__top' }, icon('sparkle', 18), h('span', { text: 'Новые слова' })),
@@ -194,12 +194,60 @@
       )
     );
 
+    /* Ненавязчивый вход в напоминания: есть что делать (долг или новые
+       слова), а напоминания выключены — без этой строки человек просто не
+       знает, что такая функция есть. Скрытие живёт до конца дня (ключ дня,
+       как у серии), завтра подсказка вернётся, если делать всё ещё что-то. */
+    var nudge = null;
+    var N = App.notify;
+    var perm = N && typeof N.permission === 'function' ? N.permission() : 'unsupported';
+    if (N && typeof N.supported === 'function' && N.supported() &&
+        !N.settings().enabled &&
+        (totals.due > 0 || totals.new > 0) &&
+        data.settings.notifyNudgeHidden !== U.dayKey(now)) {
+      var nudgeTitle = totals.due > 0
+        ? 'К повторению: ' + totals.due + ' ' + U.plural(totals.due, 'карточка', 'карточки', 'карточек')
+        : 'Новых слов: ' + totals.new + ' ' + U.plural(totals.new, 'слово', 'слова', 'слов') + ' — как раз начать';
+      /* Подпись зависит от того, что мешает: запрет браузера или просто
+         выключатель. Сами «исправить» не пытаемся — configure({enabled:true})
+         честно скажет словами, если браузер запретил уведомления. */
+      var blocked = perm === 'denied' || perm === 'unsupported';
+      var nudgeHint = blocked
+        ? 'Уведомления запрещены в браузере — нажмите «Включить», подскажу, где это менять.'
+        : 'Включите напоминания — приложение само напомнит, когда пора заниматься.';
+      nudge = h('div', { class: 'nudge' },
+        h('div', { class: 'nudge__text' },
+          h('b', { text: nudgeTitle }),
+          h('span', { class: 'muted small', text: nudgeHint })
+        ),
+        h('div', { class: 'nudge__actions' },
+          h('button', {
+            class: 'btn btn--primary btn--sm',
+            onclick: function () {
+              /* Включение прямо из жеста: configure запросит разрешение сам,
+                 а при запрете покажет, что именно делать дальше. */
+              N.configure({ enabled: true }).then(function () { App.router.refresh(); });
+            }
+          }, icon('clock', 15), h('span', { text: 'Включить' })),
+          h('button', {
+            class: 'icon-btn',
+            title: 'Скрыть до завтра',
+            'aria-label': 'Скрыть до завтра',
+            onclick: function () {
+              S.updateSettings({ notifyNudgeHidden: U.dayKey(Date.now()) });
+              if (nudge && nudge.remove) nudge.remove();
+            }
+          }, icon('close', 16))
+        )
+      );
+    }
+
     var list = h('div', { class: 'deck-grid', id: 'deck-list' });
     renderDeckList(list, deckList, query, now);
 
     U.clear(root);
     U.append(root, [
-      h('div', { class: 'page' }, header, overview, list)
+      h('div', { class: 'page' }, header, overview, nudge, list)
     ]);
   }
 

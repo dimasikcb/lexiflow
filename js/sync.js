@@ -35,10 +35,20 @@
   /* Пока приложение на экране, обмен идёт часто: удалил карточку на телефоне —
      на компьютере она должна исчезнуть сама, без ручной синхронизации.
      Пятиминутный интервал для этого не годился: человек ждал «реального
-     времени», а видел расхождение на несколько минут. */
-  var LIVE_INTERVAL = 15000;
-  var AUTO_INTERVAL = 5 * 60 * 1000;
-  var CHANGE_DELAY = 5000;
+     времени», а видел расхождение на несколько минут.
+     На экране — две секунды: правка первого устройства живёт на втором
+     в пределах пары секунд. Чаще нельзя: лимит GitHub — 5000 запросов
+     в час на все устройства сразу, а запросов в час при опросе раз в две
+     секунды выходит 1800 на устройство. Экономят частые опросы условные
+     запросы (If-None-Match, ниже) и пропуск записи при пустом тике.
+     В фоне — минута: браузер там режет таймеры и сеть, а на возвращение
+     на экран есть shouldSyncOnResume. */
+  var LIVE_INTERVAL = 2000;
+  var AUTO_INTERVAL = 60 * 1000;
+  /* Свои правки уходят меньше чем за секунду: за это время человек едва
+     успевает нажать ещё одну кнопку, а не копит пачку изменений.
+     Удаления по-прежнему срочные (URGENT_DELAY). */
+  var CHANGE_DELAY = 800;
 
   /* Удаление ждать не должно.
      Обычная правка потерпит: если телефон уснёт, она уедет позже. Но удаление,
@@ -58,7 +68,7 @@
 
   /* Первый обмен после запуска приложения. Небольшая задержка нужна, чтобы
      не соревноваться с отрисовкой первого экрана. */
-  var START_DELAY = 1500;
+  var START_DELAY = 800;
 
   /**
    * Сколько ждать перед отправкой правки.
@@ -389,6 +399,15 @@
      этот флаг переживает отмену таймера: по нему приложение понимает, что
      при возвращении в него нужно отправить данные, а не ждать пять минут. */
   var dirty = false;
+  /* Точная строка, которую мы в последний раз записали в гист. Если облако
+     отдаёт её же и локальных правок нет — перезаписывать нечем: опрос раз в
+     две секунды не должен лить запросами и переписывать гист собой же. */
+  var lastWritten = '';
+  /* ETag последнего прочитаного гиста: с ним GitHub может ответить 304
+     «не менялось» — без тела ответа. Считается ли такой запрос против
+     лимита — по документации не считается, но интервал опроса выбран
+     консервативно, чтобы всё сходилось и без этой скидки. */
+  var lastEtag = '';
   /* Когда страница ушла в фон: по этому времени решается, забирать ли
      чужие правки при возвращении. */
   var hiddenAt = 0;
@@ -489,6 +508,8 @@
       'Accept': 'application/vnd.github+json',
       'X-GitHub-Api-Version': '2022-11-28'
     };
+    /* Условный запрос: если облако не менялось, придёт 304 без тела. */
+    if (opts.etag) headers['If-None-Match'] = opts.etag;
     var init = { method: opts.method || 'GET', headers: headers, cache: 'no-store' };
     if (opts.body !== undefined) {
       var body = JSON.stringify(opts.body);
@@ -505,7 +526,11 @@
       return response.text().then(function (text) {
         var json = null;
         try { json = text ? JSON.parse(text) : null; } catch (e) { json = null; }
-        return { ok: !!response.ok, status: response.status, json: json };
+        /* ETag из заголовков — для следующего условного запроса. У заглушек
+           в тестах заголовков нет, поэтому проверка типа. */
+        var etag = (response.headers && typeof response.headers.get === 'function')
+          ? response.headers.get('ETag') : null;
+        return { ok: !!response.ok, status: response.status, json: json, etag: etag };
       });
     }, function () {
       return { ok: false, status: 0, network: true };
@@ -554,6 +579,7 @@
       if (!res.ok) return { error: describeError(res) };
       var id = res.json && res.json.id;
       if (!id) return { error: 'GitHub не вернул идентификатор хранилища.' };
+      lastWritten = content;
       return { id: id };
     });
   }
@@ -574,24 +600,28 @@
   }
 
   function readRemote(token, gistId) {
-    return request('/gists/' + gistId, { token: token }).then(function (res) {
+    return request('/gists/' + gistId, { token: token, etag: lastEtag }).then(function (res) {
+      /* 304 — с прошлого чтения облако не менялось. Тела нет, но это самый
+         дешёвый ответ: слияние, сериализация и запись не нужны вовсе. */
+      if (res.status === 304) return { unchanged: true };
       if (!res.ok) return { error: describeError(res) };
+      if (res.etag) lastEtag = res.etag;
 
       var file = (res.json && res.json.files) ? res.json.files[GIST_FILE] : null;
-      /* Гист есть, а файла ещё нет — считаем облако пустым и просто
-         заливаем свои данные. Это первый запуск, а не ошибка. */
-      if (!file) return { data: {} };
-      if (file.truncated) {
-        return { error: 'Файл синхронизации слишком большой: GitHub отдаёт его частями. ' +
-          'Уменьшите набор данных и подключитесь заново.' };
-      }
-      if (!file.content) return { data: {} };
+    /* Гист есть, а файла ещё нет — считаем облако пустым и просто
+       заливаем свои данные. Это первый запуск, а не ошибка. */
+    if (!file) return { data: {}, raw: '' };
+    if (file.truncated) {
+      return { error: 'Файл синхронизации слишком большой: GitHub отдаёт его частями. ' +
+        'Уменьшите набор данных и подключитесь заново.' };
+    }
+    if (!file.content) return { data: {}, raw: '' };
 
-      var parsed;
-      try { parsed = JSON.parse(file.content); }
-      catch (e) { return { error: 'Файл синхронизации повреждён: не удалось разобрать JSON.' }; }
-      if (!parsed || typeof parsed !== 'object') return { data: {} };
-      return { data: parsed };
+    var parsed;
+    try { parsed = JSON.parse(file.content); }
+    catch (e) { return { error: 'Файл синхронизации повреждён: не удалось разобрать JSON.' }; }
+    if (!parsed || typeof parsed !== 'object') return { data: {}, raw: '' };
+    return { data: parsed, raw: file.content };
     });
   }
 
@@ -601,10 +631,174 @@
     if (!existing) return createGist(token);
 
     return request('/gists/' + existing, { token: token }).then(function (res) {
-      if (res.ok) return writeGist(token, existing, JSON.stringify(S.syncPayload()));
+      if (res.ok) {
+        var content = JSON.stringify(S.syncPayload());
+        return writeGist(token, existing, content).then(function (w) {
+          if (!w.error) lastWritten = content;
+          return w;
+        });
+      }
       if (res.status === 404) return createGist(token);
       return { error: describeError(res) };
     });
+  }
+
+  /* ============================================================
+     3.5. КОД ПРИГЛАШЕНИЯ (подключение второго устройства)
+
+     Главная проблема второго устройства: человек должен сам создать
+     токен на GitHub (восемь шагов по чужому сайту), вставить его,
+     вставить код хранилища, и на каждом шаге есть куда ошибиться.
+     Реально очевидный путь — показать на первом устройстве код,
+     который несёт и токен, и адрес хранилища, а на втором вставить
+     его одной операции.
+
+     Токен пользователя остаётся в семействе его устройств — ровно
+     там же, где он и так лежит (оба устройства принадлежат одному
+     человеку). Код можно отозвать в любой момент, создав новый
+     токен, поэтому утечка QR с экрана не даёт вечного доступа.
+
+     Чистые функции: inviteCode/inviteParse работают без сети и DOM,
+     поэтому проверяются юнит-тестами.
+     ============================================================ */
+
+  var INVITE_PREFIX = 'LF2';
+  var B32 = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ234567';
+
+  function utf8ToBytes(text) {
+    var out = [];
+    var str = String(text);
+    for (var i = 0; i < str.length; i++) {
+      var code = str.charCodeAt(i);
+      if (code < 0x80) out.push(code);
+      else if (code < 0x800) { out.push(0xc0 | (code >> 6), 0x80 | (code & 0x3f)); }
+      else { out.push(0xe0 | (code >> 12), 0x80 | ((code >> 6) & 0x3f), 0x80 | (code & 0x3f)); }
+    }
+    return out;
+  }
+
+  function bytesToUtf8(bytes) {
+    var out = '';
+    var i = 0;
+    while (i < bytes.length) {
+      var b = bytes[i++];
+      var code;
+      if (b < 0x80) code = b;
+      else if (b < 0xe0 && i < bytes.length) code = ((b & 0x1f) << 6) | (bytes[i++] & 0x3f);
+      else if (i + 1 < bytes.length) code = ((b & 0x0f) << 12) | ((bytes[i++] & 0x3f) << 6) | (bytes[i++] & 0x3f);
+      else code = 0xfffd;
+      /* Суррогатные пары: склеиваем, иначе имя на кириллице превратится в мусор. */
+      if (code >= 0xd800 && code <= 0xdbff && i + 1 < bytes.length) {
+        var low = ((bytes[i] & 0x3f) << 6) | (bytes[i + 1] & 0x3f);
+        if (low >= 0xdc00 && low <= 0xdfff) {
+          code = 0x10000 + ((code - 0xd800) << 10) + (low - 0xdc00);
+          i += 2;
+        }
+      }
+      if (code > 0xffff) {
+        code -= 0x10000;
+        out += String.fromCharCode(0xd800 + (code >> 10), 0xdc00 + (code & 0x3ff));
+      } else out += String.fromCharCode(code);
+    }
+    return out;
+  }
+
+  function base32Encode(bytes) {
+    var out = '';
+    var buffer = 0;
+    var bits = 0;
+    for (var i = 0; i < bytes.length; i++) {
+      buffer = (buffer << 8) | (bytes[i] & 0xff);
+      bits += 8;
+      while (bits >= 5) {
+        bits -= 5;
+        out += B32[(buffer >> bits) & 31];
+      }
+    }
+    if (bits > 0) out += B32[(buffer << (5 - bits)) & 31];
+    return out;
+  }
+
+  function base32Decode(text) {
+    var clean = String(text || '').toUpperCase().replace(/[^A-Z2-7]/g, '');
+    if (!clean.length) return null;
+    var bytes = [];
+    var buffer = 0;
+    var bits = 0;
+    for (var i = 0; i < clean.length; i++) {
+      var v = B32.indexOf(clean[i]);
+      if (v < 0) return null;
+      buffer = (buffer << 5) | v;
+      bits += 5;
+      if (bits >= 8) {
+        bits -= 8;
+        bytes.push((buffer >> bits) & 0xff);
+      }
+    }
+    return bytes;
+  }
+
+  /* Контрольная сумма: 16 бит, мультипликативная — поймает опечатку
+     в любом символе и перестановку соседних (B32 без 0/O/1/I/L). */
+  function inviteSum(bytes) {
+    var sum = 65521;
+    for (var i = 0; i < bytes.length; i++) {
+      sum = (sum * 31 + (bytes[i] & 0xff)) % 65536;
+    }
+    return sum;
+  }
+
+  /**
+   * Код приглашения для второго устройства.
+   * @returns {string} вида 'LF2-XXXX…-YYYY' — пустая строка, если синхронизация не настроена.
+   */
+  function inviteCode() {
+    var cfg = syncCfg();
+    if (!cfg.token || !cfg.gistId) return '';
+    var payload = utf8ToBytes(JSON.stringify({ t: cfg.token, g: cfg.gistId }));
+    /* Хвост — та же base32-упаковка двух байт суммы: при разборе decode
+       возвращает ровно их, и сравнение посимвольное. */
+    var sum = inviteSum(payload);
+    return INVITE_PREFIX + '-' + base32Encode(payload) + '-' +
+      base32Encode([sum >> 8, sum & 255]);
+  }
+
+  /**
+   * Разбор кода приглашения. Мягкий к вводу руками: регистр, пробелы,
+   * дефисы, отсутствие префикса и переносы строк — всё допустимо.
+   * @returns {{token: string, gistId: string}|null} null — код битый
+   *   (опечатка, чужой формат) или контрольная сумма не сошлась.
+   */
+  function inviteParse(code) {
+    var clean = String(code || '').toUpperCase().replace(/[^A-Z0-9]/g, '');
+    if (clean.indexOf(INVITE_PREFIX) === 0) clean = clean.slice(INVITE_PREFIX.length);
+    if (clean.length < 12) return null;
+    var tail = clean.slice(-4);
+    var body = clean.slice(0, -4);
+    var payload = base32Decode(body);
+    if (!payload) return null;
+    /* Сравниваем хвост СТРОКОЙ, а не распакованными байтами: четыре
+       символа несут 20 бит, а в два байта помещается 16 — последние
+       четыре бита при распаковке отбрасываются, и правку последнего
+       символа проверка суммой пропустила бы. */
+    var expectTail = base32Encode([inviteSum(payload) >> 8, inviteSum(payload) & 255]);
+    if (tail !== expectTail) return null;
+    try {
+      var obj = JSON.parse(bytesToUtf8(payload));
+      if (!obj || typeof obj !== 'object') return null;
+      if (!obj.t || !obj.g) return null;
+      return { token: String(obj.t), gistId: String(obj.g) };
+    } catch (e) { return null; }
+  }
+
+  /** Подключиться по коду приглашения (он же токен + адрес хранилища). */
+  function joinInvite(code) {
+    var parsed = inviteParse(code);
+    if (!parsed) {
+      return Promise.resolve(fail('Код приглашения не распознан. Проверьте, что скопировали его целиком.' +
+        ' Код выглядит так: LF2-… (английские буквы и цифры).'));
+    }
+    return join(parsed.token, parsed.gistId);
   }
 
   /* ============================================================
@@ -720,12 +914,39 @@
     return readRemote(cfg.token, cfg.gistId).then(function (res) {
       if (res.error) return fail(res.error);
 
-      var merged = merge(S.syncPayload(), res.data);
-      var before = dataSignature(S.get());
-      S.applyMerged(merged.data);
-      /* Экран обновляем только когда из облака и правда пришло что-то новое.
-         Иначе каждые 15 секунд всё перерисовывалось бы без причины. */
-      if (dataSignature(S.get()) !== before) S.notify('sync:remote');
+      /* 304: в облаке ничего нового — самая частая ситуация при опросе раз
+         в две секунды. Слияние не нужно, payload не сериализуем вовсе. */
+      if (res.unchanged && !dirty) {
+        var same = Date.now();
+        patchSync({ lastAt: same, lastError: '' });
+        setStatus('ok', 'Синхронизировано');
+        return { ok: true, stats: {}, at: same };
+      }
+
+      var merged = { data: null, stats: {} };
+      /* 304 с неотправленными правками: облако не менялось, но наши правки
+         в него ещё не уехали — сразу пишем, предварительное слияние не нужно. */
+      if (!res.unchanged) {
+        merged = merge(S.syncPayload(), res.data);
+        var before = dataSignature(S.get());
+        S.applyMerged(merged.data);
+        /* Экран обновляем только когда из облака и правда пришло что-то новое.
+           Иначе каждые пару секунд всё перерисовывалось бы без причины. */
+        if (dataSignature(S.get()) !== before) S.notify('sync:remote');
+      }
+
+      /* Опрос без правок не должен ничего писать. syncPayload() ставит
+         свежий updatedAt при каждом вызове, поэтому сравнить «нашу копию»
+         побайтово нельзя — сравниваем с той строкой, которую записали сами:
+         если облако отдаёт ровно её и отправлять нечего, тик завершается
+         одним чтением. Побочная польза: payload не сериализуется вовсе,
+         а на большом наборе данных это заметная работа на телефоне. */
+      if (!dirty && lastWritten && res.raw === lastWritten) {
+        var idleAt = Date.now();
+        patchSync({ lastAt: idleAt, lastError: '' });
+        setStatus('ok', 'Синхронизировано');
+        return { ok: true, stats: merged.stats, at: idleAt };
+      }
 
       /* Отправляем ровно то, что лежит в хранилище после слияния:
          syncPayload() сам вырезает токен и идентификатор гиста. */
@@ -735,6 +956,7 @@
 
       return writeGist(cfg.token, cfg.gistId, content, opts.keepalive).then(function (written) {
         if (written.error) return fail(written.error);
+        lastWritten = content;
         var at = Date.now();
         patchSync({ lastAt: at, lastError: '' });
         /* Данные в облаке. Снимаем флаг только здесь: при ошибке он остаётся,
@@ -755,6 +977,8 @@
   function disconnect() {
     running = false;
     clearTimers();
+    lastWritten = '';
+    lastEtag = '';
     configure({
       provider: 'off',
       token: '',
@@ -797,14 +1021,22 @@
   }
 
   function clearTimers() {
-    if (autoTimer) { global.clearInterval(autoTimer); autoTimer = null; }
+    if (autoTimer) { global.clearTimeout(autoTimer); autoTimer = null; }
     if (changeTimer) { global.clearTimeout(changeTimer); changeTimer = null; }
     if (firstTimer) { global.clearTimeout(firstTimer); firstTimer = null; }
   }
 
   function autoSync(opts) {
     if (busy || !running || !isConfigured() || !syncCfg().auto) return;
-    if (!isOnline()) return;
+    if (!isOnline()) {
+      /* Нет сети — это не ошибка синхронизации, а её отсутствие.
+         Раньше тикающий таймер каждые 15 секунд переводил статус
+         в «Ошибка», и панель выглядела сломанной в метро. */
+      if (live.state !== 'idle' || live.message !== 'Офлайн: ждём сеть') {
+        setStatus('idle', 'Офлайн: ждём сеть');
+      }
+      return;
+    }
     now(opts);
   }
 
@@ -862,8 +1094,9 @@
     setAutoFlag(true);
     applyAuto();
     /* При запуске приложения первый обмен нужен быстро — иначе холодный
-       старт показывает вчерашние данные. START_DELAY (1,5 c) быстрее
-       обычной задержки (5 c), но не бьёт по сети мгновенно. */
+       старт показывает вчерашние данные. START_DELAY (0,8 c) — как у
+       обычной правки: сеть сразу после открытия не terlalu дорога,
+       а свежие данные важнее. */
     scheduleSoon(START_DELAY);
     return status();
   }
@@ -973,6 +1206,10 @@
     configure: configure,
     connect: connect,
     join: join,
+    /* Подключение вторым устройством одним кодом приглашения. */
+    inviteCode: inviteCode,
+    inviteParse: inviteParse,
+    joinInvite: joinInvite,
     now: now,
     disconnect: disconnect,
     start: start,
