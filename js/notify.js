@@ -720,7 +720,90 @@
      ============================================================ */
 
   function onVisibility() {
-    if (global.document && global.document.visibilityState === 'visible') tick();
+    if (global.document && global.document.visibilityState === 'visible') {
+      tick();
+      scheduleNextDue();
+    }
+  }
+
+  /* ============================================================
+     Точное время: будильник на ближайший срок
+
+     Опрос раз в минуту уведомит «когда-нибудь в течение минуты», но если
+     вкладка в фоне — таймеры браузера могут просыпаться редко. Поэтому,
+     пока приложение живо, ставим отдельный таймер ровно на ближайший срок
+     повторения: слово «созревает» — и уведомление приходит в тот же момент,
+     без ожидания следующей проверки.
+     ============================================================ */
+
+  var dueTimer = null;
+  var DUE_TIMER_MAX_MS = 12 * 3600 * 1000;   // дальше 12 часов не планируем
+
+  /** Когда наступит ближайший срок повторения (0 — в пределах горизонта нет). */
+  function nextDueAt(now) {
+    var S = store();
+    if (!S || typeof S.allCards !== 'function') return 0;
+    now = now || Date.now();
+    var best = 0;
+    S.allCards(null).forEach(function (c) {
+      if (!c || c.suspended || !c.word || !c.srs) return;
+      if (c.srs.state !== 'review' && c.srs.state !== 'relearning') return;
+      var due = Number(c.srs.due);
+      if (!isFinite(due) || due <= now) return;
+      if (due - now > DUE_TIMER_MAX_MS) return;
+      var deck = typeof S.getDeck === 'function' ? S.getDeck(c.deckId) : null;
+      if (deck && deck.archived) return;
+      if (!best || due < best) best = due;
+    });
+    return best;
+  }
+
+  /** Переставить будильник на ближайший срок. false — ближайших нет. */
+  function scheduleNextDue() {
+    if (dueTimer) { global.clearTimeout(dueTimer); dueTimer = null; }
+    var now = Date.now();
+    var at = nextDueAt(now);
+    if (!at) return false;
+    if (!settings().enabled) return false;
+    var delay = Math.max(1000, at - now + 800);
+    dueTimer = global.setTimeout(function () {
+      dueTimer = null;
+      // force: пауза между пачками не должна задерживать слово, у которого
+      // срок наступил именно сейчас; от повторов защищает карта объявленных
+      announceDue(Date.now(), true);
+      scheduleNextDue();
+    }, delay);
+    return true;
+  }
+
+  /* ============================================================
+     Запасной путь: напоминание внутри приложения
+
+     Если браузер не умеет уведомления или человек их запретил, молчать
+     нельзя — иначе выглядит как «напоминания не работают». Показываем
+     всплывающую строку с самим словом прямо в приложении. Не чаще раза в
+     30 минут, чтобы не мешать заниматься.
+     ============================================================ */
+
+  var inAppAt = 0;
+  var IN_APP_GAP_MS = 30 * 60000;
+
+  function announceInApp(now) {
+    now = now || Date.now();
+    if (!settings().enabled) return false;
+    // системные уведомления работают — вторая строка только помешает
+    if (supported() && permission() === 'granted') return false;
+    if (now - inAppAt < IN_APP_GAP_MS) return false;
+    var cards = dueCards(now, 1);
+    if (!cards.length) return false;
+    var c = cards[0];
+    inAppAt = now;
+    var rest = dueCards(now, 0).length - 1;
+    var text = 'Пора повторить: ' + c.word + (c.translation ? ' — ' + c.translation : '');
+    if (rest > 0) text += ' (и ещё ' + rest + ' ' + plural(rest, 'слово', 'слова', 'слов') + ')';
+    toast(text, 'info', 7000);
+    chime();
+    return true;
   }
 
   function tick() {
@@ -728,6 +811,8 @@
     /* Сначала слова: срок повторения — событие отдельное от дневной сводки,
        и человек ждёт уведомление тогда, когда слово «созрело», а не в 19:00. */
     announceDue();
+    announceInApp();
+    scheduleNextDue();
     var cfg = settings();
     var now = Date.now();
     var due = dueToday(now);
@@ -759,12 +844,14 @@
     }
     // первая проверка — вскоре после запуска, но не в момент отрисовки
     global.setTimeout(tick, FIRST_CHECK_MS);
+    scheduleNextDue();
   }
 
   function stop() {
     if (!started) return;
     started = false;
     if (timer) { global.clearInterval(timer); timer = null; }
+    if (dueTimer) { global.clearTimeout(dueTimer); dueTimer = null; }
     if (global.document && global.document.removeEventListener) {
       global.document.removeEventListener('visibilitychange', onVisibility);
     }
@@ -973,7 +1060,8 @@
 
     var S = store();
     if (!S) return;
-    if (typeof S.subscribe === 'function') S.subscribe(function () { refreshMirror(); });
+    // любая правка данных (ответ в тренировке, новый срок) переставляет будильник
+    if (typeof S.subscribe === 'function') S.subscribe(function () { refreshMirror(); scheduleNextDue(); });
     if (typeof S.flush === 'function') {
       var original = S.flush;
       S.flush = function () {
@@ -1055,6 +1143,9 @@
     WORD_TAG: WORD_TAG,
     dueCards: dueCards,
     announceDue: announceDue,
+    nextDueAt: nextDueAt,
+    scheduleNextDue: scheduleNextDue,
+    announceInApp: announceInApp,
     readDue: readDue,
     saveDue: saveDue,
     showWord: showWord,
