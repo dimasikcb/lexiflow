@@ -1,0 +1,355 @@
+{
+ "version": 1,
+ "generated": "2026-09-21T18:01:12.694Z",
+ "provider": "code.responsivevoice.org",
+ "phrases": {
+  "https://lexiflow.local/audio/en/although": {
+   "file": "audio/en/a2bbcb2af66c.mp3",
+   "lang": "en",
+   "text": "although",
+   "bytes": 5952
+  },
+  "https://lexiflow.local/audio/ru/%D1%85%D0%BE%D1%82%D1%8F%2C%20%D0%BD%D0%B5%D1%81%D0%BC%D0%BE%D1%82%D1%80%D1%8F%20%D0%BD%D0%B0": {
+   "file": "audio/ru/58ce58db4efd.mp3",
+   "lang": "ru",
+   "text": "хотя, несмотря на",
+   "bytes": 13248
+  },
+  "https://lexiflow.local/audio/en/to%20improve": {
+   "file": "audio/en/13a2068d8024.mp3",
+   "lang": "en",
+   "text": "to improve",
+   "bytes": 7296
+  },
+  "https://lexiflow.local/audio/en/Although%20it%20was%20late%2C%20we%20kept%20working.": {
+   "file": "audio/en/75c0be7ff7a4.mp3",
+   "lang": "en",
+   "text": "Although it was late, we kept working.",
+   "bytes": 17472
+  },
+  "https://lexiflow.local/audio/ru/%D1%83%D0%BB%D1%83%D1%87%D1%88%D0%B0%D1%82%D1%8C(%D1%81%D1%8F)": {
+   "file": "audio/ru/ae7ed25c63f4.mp3",
+   "lang": "ru",
+   "text": "улучшать(ся)",
+   "bytes": 11136
+  },
+  "https://lexiflow.local/audio/en/I%20want%20to%20improve%20my%20English.": {
+   "file": "audio/en/62ec28f1c5cc.mp3",
+   "lang": "en",
+   "text": "I want to improve my English.",
+   "bytes": 14784
+  },
+  "https://lexiflow.local/audio/en/It%20took%20a%20lot%20of%20effort.": {
+   "file": "audio/en/dc9562bcc56b.mp3",
+   "lang": "en",
+   "text": "It took a lot of effort.",
+   "bytes": 11712
+  },
+  "https://lexiflow.local/audio/ru/%D1%83%D1%81%D0%B8%D0%BB%D0%B8%D0%B5%2C%20%D1%81%D1%82%D0%B0%D1%80%D0%B0%D0%BD%D0%B8%D0%B5": {
+   "file": "audio/ru/11afd884d498.mp3",
+   "lang": "ru",
+   "text": "усилие, старание",
+   "bytes": 14016
+  },
+  "https://lexiflow.local/audio/en/effort": {
+   "file": "audio/en/78462b2f58c3.mp3",
+   "lang": "en",
+   "text": "effort",
+   "bytes": 5568
+  },
+  "https://lexiflow.local/audio/en/to%20achieve": {
+   "file": "audio/en/68bb9b0d83ce.mp3",
+   "lang": "en",
+   "text": "to achieve",
+   "bytes": 7104
+  },
+  "https://lexiflow.local/audio/en/She%20achieved%20her%20goal.": {
+   "file": "audio/en/f90dd211e830.mp3",
+   "lang": "en",
+   "text": "She achieved her goal.",
+   "bytes": 10176
+  },
+  "https://lexiflow.local/audio/en/opportunity": {
+   "file": "audio/en/494b5b24103b.mp3",
+   "lang": "en",
+   "text": "opportunity",
+   "bytes": 8064
+  },
+  "https://lexiflow.local/audio/ru/%D0%B4%D0%BE%D1%81%D1%82%D0%B8%D0%B3%D0%B0%D1%82%D1%8C": {
+   "file": "audio/ru/81358c518fc3.mp3",
+   "lang": "ru",
+   "text": "достигать",
+   "bytes": 8064
+  },
+  "https://lexiflow.local/audio/en/This%20is%20a%20great%20opportunity.": {
+   "file": "audio/en/d170ab52452d.mp3",
+   "lang": "en",
+   "text": "This is a great opportunity.",
+   "bytes": 14208
+  },
+  "https://lexiflow.local/audio/ru/%D0%B2%D0%BE%D0%B7%D0%BC%D0%BE%D0%B6%D0%BD%D0%BE%D1%81%D1%82%D1%8C": {
+   "file": "audio/ru/567cc58fa176.mp3",
+   "lang": "ru",
+   "text": "возможность",
+   "bytes": 9024
+  },
+  "https://lexiflow.local/audio/en/to%20avoid": {
+   "file": "audio/en/d3457c2fb141.mp3",
+   "lang": "en",
+   "text": "to avoid",
+   "bytes": 6912
+  },
+  "https://lexiflow.local/audio/ru/%D0%B8%D0%B7%D0%B1%D0%B5%D0%B3%D0%B0%D1%82%D1%8C": {
+   "file": "audio/ru/a24f3f566356.mp3",
+   "lang": "ru",
+   "text": "избегать",
+   "bytes": 7680
+  },
+  "https://lexiflow.local/audio/en/Try%20to%20avoid%20mistakes.": {
+   "file": "audio/en/4624a25ed4e5.mp3",
+   "lang": "en",
+   "text": "Try to avoid mistakes.",
+   "bytes": 12096
+  },
+  "https://lexiflow.local/audio/en/However%2C%20I%20disagree.": {
+   "file": "audio/en/36fd9a44c250.mp3",
+   "lang": "en",
+   "text": "However, I disagree.",
+   "bytes": 12672
+  },
+  "https://lexiflow.local/audio/ru/%D0%BE%D0%B4%D0%BD%D0%B0%D0%BA%D0%BE": {
+   "file": "audio/ru/0dcad97054c0.mp3",
+   "lang": "ru",
+   "text": "однако",
+   "bytes": 7296
+  },
+  "https://lexiflow.local/audio/en/however": {
+   "file": "audio/en/8e0caf8407b4.mp3",
+   "lang": "en",
+   "text": "however",
+   "bytes": 6528
+  },
+  "https://lexiflow.local/audio/en/to%20require": {
+   "file": "audio/en/8d4dae8fd0f7.mp3",
+   "lang": "en",
+   "text": "to require",
+   "bytes": 8064
+  },
+  "https://lexiflow.local/audio/en/The%20job%20requires%20patience.": {
+   "file": "audio/en/e7314459e3cf.mp3",
+   "lang": "en",
+   "text": "The job requires patience.",
+   "bytes": 14208
+  },
+  "https://lexiflow.local/audio/ru/%D1%82%D1%80%D0%B5%D0%B1%D0%BE%D0%B2%D0%B0%D1%82%D1%8C": {
+   "file": "audio/ru/4b4232c8f0b0.mp3",
+   "lang": "ru",
+   "text": "требовать",
+   "bytes": 7296
+  },
+  "https://lexiflow.local/audio/en/He%20is%20a%20reliable%20friend.": {
+   "file": "audio/en/8a4d96da3abc.mp3",
+   "lang": "en",
+   "text": "He is a reliable friend.",
+   "bytes": 13632
+  },
+  "https://lexiflow.local/audio/en/reliable": {
+   "file": "audio/en/1b4a553ff3e8.mp3",
+   "lang": "en",
+   "text": "reliable",
+   "bytes": 6912
+  },
+  "https://lexiflow.local/audio/ru/%D0%BD%D0%B0%D0%B4%D1%91%D0%B6%D0%BD%D1%8B%D0%B9": {
+   "file": "audio/ru/0e33701cbf10.mp3",
+   "lang": "ru",
+   "text": "надёжный",
+   "bytes": 8064
+  },
+  "https://lexiflow.local/audio/en/to%20suggest": {
+   "file": "audio/en/2feb6ab9ed8e.mp3",
+   "lang": "en",
+   "text": "to suggest",
+   "bytes": 8256
+  },
+  "https://lexiflow.local/audio/en/I%20suggest%20a%20break.": {
+   "file": "audio/en/680ac3363001.mp3",
+   "lang": "en",
+   "text": "I suggest a break.",
+   "bytes": 10368
+  },
+  "https://lexiflow.local/audio/en/It%20is%20slightly%20different.": {
+   "file": "audio/en/4c819dc4960b.mp3",
+   "lang": "en",
+   "text": "It is slightly different.",
+   "bytes": 10368
+  },
+  "https://lexiflow.local/audio/en/slightly": {
+   "file": "audio/en/c2166ee9c54f.mp3",
+   "lang": "en",
+   "text": "slightly",
+   "bytes": 6720
+  },
+  "https://lexiflow.local/audio/ru/%D0%BD%D0%B5%D0%BC%D0%BD%D0%BE%D0%B3%D0%BE%2C%20%D1%81%D0%BB%D0%B5%D0%B3%D0%BA%D0%B0": {
+   "file": "audio/ru/2445d0de1627.mp3",
+   "lang": "ru",
+   "text": "немного, слегка",
+   "bytes": 12480
+  },
+  "https://lexiflow.local/audio/en/to%20provide": {
+   "file": "audio/en/b6d4876ba6aa.mp3",
+   "lang": "en",
+   "text": "to provide",
+   "bytes": 7104
+  },
+  "https://lexiflow.local/audio/en/We%20provide%20free%20support.": {
+   "file": "audio/en/4191e1ce1d02.mp3",
+   "lang": "en",
+   "text": "We provide free support.",
+   "bytes": 12096
+  },
+  "https://lexiflow.local/audio/ru/%D0%BF%D1%80%D0%B5%D0%B4%D0%BB%D0%B0%D0%B3%D0%B0%D1%82%D1%8C": {
+   "file": "audio/ru/b3ed889c4826.mp3",
+   "lang": "ru",
+   "text": "предлагать",
+   "bytes": 8064
+  },
+  "https://lexiflow.local/audio/ru/%D0%BF%D1%80%D0%B5%D0%B4%D0%BE%D1%81%D1%82%D0%B0%D0%B2%D0%BB%D1%8F%D1%82%D1%8C": {
+   "file": "audio/ru/2eaebb0c1704.mp3",
+   "lang": "ru",
+   "text": "предоставлять",
+   "bytes": 9216
+  },
+  "https://lexiflow.local/audio/de/der%20Termin": {
+   "file": "audio/de/6ae6ecff970f.mp3",
+   "lang": "de",
+   "text": "der Termin",
+   "bytes": 8640
+  },
+  "https://lexiflow.local/audio/ru/%D0%B2%D1%81%D1%82%D1%80%D0%B5%D1%87%D0%B0%2C%20%D1%81%D1%80%D0%BE%D0%BA": {
+   "file": "audio/ru/3a4d9f89b3eb.mp3",
+   "lang": "ru",
+   "text": "встреча, срок",
+   "bytes": 11904
+  },
+  "https://lexiflow.local/audio/de/die%20Erfahrung": {
+   "file": "audio/de/d88bbdb281a7.mp3",
+   "lang": "de",
+   "text": "die Erfahrung",
+   "bytes": 9792
+  },
+  "https://lexiflow.local/audio/de/Ich%20habe%20morgen%20einen%20Termin.": {
+   "file": "audio/de/232b78e6f31f.mp3",
+   "lang": "de",
+   "text": "Ich habe morgen einen Termin.",
+   "bytes": 15552
+  },
+  "https://lexiflow.local/audio/ru/%D0%BE%D0%BF%D1%8B%D1%82": {
+   "file": "audio/ru/fed181a6171a.mp3",
+   "lang": "ru",
+   "text": "опыт",
+   "bytes": 5760
+  },
+  "https://lexiflow.local/audio/de/Er%20hat%20viel%20Erfahrung.": {
+   "file": "audio/de/789adf5b3317.mp3",
+   "lang": "de",
+   "text": "Er hat viel Erfahrung.",
+   "bytes": 12480
+  },
+  "https://lexiflow.local/audio/de/vermeiden": {
+   "file": "audio/de/32fa2d812e8e.mp3",
+   "lang": "de",
+   "text": "vermeiden",
+   "bytes": 7872
+  },
+  "https://lexiflow.local/audio/de/Das%20sollte%20man%20vermeiden.": {
+   "file": "audio/de/60031673c388.mp3",
+   "lang": "de",
+   "text": "Das sollte man vermeiden.",
+   "bytes": 12864
+  },
+  "https://lexiflow.local/audio/de/wichtig": {
+   "file": "audio/de/1b61f3277c7a.mp3",
+   "lang": "de",
+   "text": "wichtig",
+   "bytes": 7872
+  },
+  "https://lexiflow.local/audio/de/die%20M%C3%B6glichkeit": {
+   "file": "audio/de/12725168888b.mp3",
+   "lang": "de",
+   "text": "die Möglichkeit",
+   "bytes": 10752
+  },
+  "https://lexiflow.local/audio/de/Das%20ist%20sehr%20wichtig.": {
+   "file": "audio/de/63e7cb60ab8c.mp3",
+   "lang": "de",
+   "text": "Das ist sehr wichtig.",
+   "bytes": 12672
+  },
+  "https://lexiflow.local/audio/de/Es%20gibt%20viele%20M%C3%B6glichkeiten.": {
+   "file": "audio/de/b0e6e13dd15c.mp3",
+   "lang": "de",
+   "text": "Es gibt viele Möglichkeiten.",
+   "bytes": 15552
+  },
+  "https://lexiflow.local/audio/ru/%D0%B2%D0%B0%D0%B6%D0%BD%D1%8B%D0%B9": {
+   "file": "audio/ru/79e3599f1569.mp3",
+   "lang": "ru",
+   "text": "важный",
+   "bytes": 7296
+  },
+  "https://lexiflow.local/audio/de/sich%20erinnern": {
+   "file": "audio/de/b9db161f36ab.mp3",
+   "lang": "de",
+   "text": "sich erinnern",
+   "bytes": 9984
+  },
+  "https://lexiflow.local/audio/de/Ich%20kann%20mich%20nicht%20erinnern.": {
+   "file": "audio/de/e1b1d2b42adb.mp3",
+   "lang": "de",
+   "text": "Ich kann mich nicht erinnern.",
+   "bytes": 14016
+  },
+  "https://lexiflow.local/audio/de/die%20Entscheidung": {
+   "file": "audio/de/10a5ea6c9f2b.mp3",
+   "lang": "de",
+   "text": "die Entscheidung",
+   "bytes": 9984
+  },
+  "https://lexiflow.local/audio/ru/%D0%B2%D1%81%D0%BF%D0%BE%D0%BC%D0%B8%D0%BD%D0%B0%D1%82%D1%8C": {
+   "file": "audio/ru/221731deb670.mp3",
+   "lang": "ru",
+   "text": "вспоминать",
+   "bytes": 8256
+  },
+  "https://lexiflow.local/audio/de/obwohl": {
+   "file": "audio/de/7bf66bceaa08.mp3",
+   "lang": "de",
+   "text": "obwohl",
+   "bytes": 7104
+  },
+  "https://lexiflow.local/audio/ru/%D1%80%D0%B5%D1%88%D0%B5%D0%BD%D0%B8%D0%B5": {
+   "file": "audio/ru/4328049e2c4b.mp3",
+   "lang": "ru",
+   "text": "решение",
+   "bytes": 8064
+  },
+  "https://lexiflow.local/audio/de/Obwohl%20es%20regnet%2C%20gehe%20ich%20spazieren.": {
+   "file": "audio/de/f4073745b8e1.mp3",
+   "lang": "de",
+   "text": "Obwohl es regnet, gehe ich spazieren.",
+   "bytes": 21312
+  },
+  "https://lexiflow.local/audio/ru/%D1%85%D0%BE%D1%82%D1%8F": {
+   "file": "audio/ru/359d6ea63709.mp3",
+   "lang": "ru",
+   "text": "хотя",
+   "bytes": 6336
+  },
+  "https://lexiflow.local/audio/de/Das%20war%20eine%20gute%20Entscheidung.": {
+   "file": "audio/de/cb7b9f73ce29.mp3",
+   "lang": "de",
+   "text": "Das war eine gute Entscheidung.",
+   "bytes": 16320
+  }
+ }
+}
