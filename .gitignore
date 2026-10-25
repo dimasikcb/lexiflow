@@ -16,3 +16,15 @@ models/
 **/models--*/
 *.log
 .DS_Store
+
+output/
+*.wav
+*.mp4
+*.mov
+*.avi
+*.mkv
+*.exe
+*.dll
+*.so
+*.dylib
+ffmpeg*/
